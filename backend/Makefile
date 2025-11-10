@@ -16,6 +16,10 @@ test:
 	@echo "Running tests..."
 	go test ./... -count=1
 
+# Run tests with race detection
+test-race:
+	@go test -count=1 -v -race ./...
+	
 # Run tests with verbose output
 test-verbose:
 	@echo "Running tests (verbose)..."
@@ -89,6 +93,7 @@ help:
 	@echo "Available targets:"
 	@echo "  make proto                - Generate protobuf code"
 	@echo "  make test                 - Run all tests"
+	@echo "  test-race     			   - Run tests with race detection"
 	@echo "  make test-verbose         - Run tests with verbose output"
 	@echo "  make test-coverage        - Run tests with coverage"
 	@echo "  make test-coverage-report - Generate HTML coverage report"

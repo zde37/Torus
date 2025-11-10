@@ -288,6 +288,8 @@ func IsResponsibleFor(nodeID, predecessorID, keyID *big.Int) bool {
 
 // GetKeysInRange returns all keys whose hash falls in the range (start, end].
 // This is used for data migration when nodes join or leave.
+// Excludes Chord metadata keys (those starting with "__chord_") to prevent
+// corruption of node state during migration.
 func (cs *ChordStorage) GetKeysInRange(ctx context.Context, startID, endID *big.Int) (map[string][]byte, error) {
 	// Get all keys from storage
 	allKeys, err := cs.storage.GetAll(ctx)
@@ -299,9 +301,19 @@ func (cs *ChordStorage) GetKeysInRange(ctx context.Context, startID, endID *big.
 
 	// Filter keys based on the range
 	for hashedKey, value := range allKeys {
+		// Skip Chord metadata keys - they should not be migrated
+		// Metadata keys use the "__chord_" prefix (e.g., "__chord_predecessor__")
+		if len(hashedKey) >= 8 && hashedKey[:8] == "__chord_" {
+			continue
+		}
+
 		// Convert hex string back to big.Int
 		keyID := new(big.Int)
-		keyID.SetString(hashedKey, 16)
+		_, success := keyID.SetString(hashedKey, 16)
+		if !success {
+			// Invalid hex string, skip it (likely metadata or corrupted data)
+			continue
+		}
 
 		// Check if key is in range (start, end]
 		if hash.InRange(keyID, startID, endID) {
@@ -314,8 +326,9 @@ func (cs *ChordStorage) GetKeysInRange(ctx context.Context, startID, endID *big.
 
 // DeleteKeysInRange deletes all keys whose hash falls in the range (start, end].
 // Returns the number of keys deleted.
+// Note: GetKeysInRange already excludes Chord metadata keys, so this is safe.
 func (cs *ChordStorage) DeleteKeysInRange(ctx context.Context, startID, endID *big.Int) (int, error) {
-	// Get keys in range
+	// Get keys in range (excludes metadata keys automatically)
 	keys, err := cs.GetKeysInRange(ctx, startID, endID)
 	if err != nil {
 		return 0, err

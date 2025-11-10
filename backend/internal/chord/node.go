@@ -408,6 +408,16 @@ func (n *ChordNode) Join(bootstrapAddr *NodeAddress) error {
 		}
 	}
 
+	// Notify our successor that we exist so it can update its predecessor
+	// This is crucial for the ring to be properly connected
+	n.logger.Info().Msg("Notifying successor of our presence")
+	if err := n.remote.Notify(successor.Address(), n.address); err != nil {
+		n.logger.Warn().
+			Err(err).
+			Msg("Failed to notify successor (will be fixed by stabilization)")
+		// Don't fail the join - stabilization will eventually fix this
+	}
+
 	// Start background tasks (stabilization will update our position)
 	n.startBackgroundTasks()
 
@@ -476,9 +486,20 @@ func (n *ChordNode) stabilize() error {
 		return nil
 	}
 
-	// If successor is self, we're alone in the ring
+	// If successor is self, check if we have a predecessor
 	if succ.Equals(n.address) {
-		return nil
+		pred := n.getPredecessor()
+		if pred == nil {
+			// No predecessor either, we're truly alone in the ring
+			return nil
+		}
+		// We have a predecessor but our successor is ourself
+		// This happens when another node joins us. Update successor to predecessor.
+		n.logger.Debug().
+			Str("predecessor", truncateHex(pred.ID.Text(16), 8)).
+			Msg("Updating successor from self to predecessor (forming ring)")
+		n.setSuccessor(pred)
+		succ = pred
 	}
 
 	// If we don't have a remote client, skip RPC calls
