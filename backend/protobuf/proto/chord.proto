@@ -1,0 +1,240 @@
+syntax = "proto3";
+
+package protogen;
+
+option go_package = "github.com/zde37/torus/protobuf/protogen";
+
+// Node represents a node in the Chord ring.
+message Node {
+  // Node ID as a byte array (160 bits / 20 bytes)
+  bytes id = 1;
+
+  // Network host (IP address or hostname)
+  string host = 2;
+
+  // Network port
+  int32 port = 3;
+}
+
+// FindSuccessorRequest asks a node to find the successor of a given ID.
+message FindSuccessorRequest {
+  // The ID to find the successor for
+  bytes id = 1;
+}
+
+// FindSuccessorResponse contains the successor node.
+message FindSuccessorResponse {
+  // The successor node
+  Node successor = 1;
+}
+
+// GetPredecessorRequest asks a node for its predecessor.
+message GetPredecessorRequest {
+  // Empty - no parameters needed
+}
+
+// GetPredecessorResponse contains the predecessor node.
+message GetPredecessorResponse {
+  // The predecessor node (may be nil if not set)
+  Node predecessor = 1;
+}
+
+// NotifyRequest notifies a node that another node might be its predecessor.
+message NotifyRequest {
+  // The node that might be the predecessor
+  Node node = 1;
+}
+
+// NotifyResponse acknowledges the notification.
+message NotifyResponse {
+  // Success indicator
+  bool success = 1;
+}
+
+// GetSuccessorListRequest asks a node for its successor list.
+message GetSuccessorListRequest {
+  // Empty - no parameters needed
+}
+
+// GetSuccessorListResponse contains the successor list.
+message GetSuccessorListResponse {
+  // List of successor nodes
+  repeated Node successors = 1;
+}
+
+// PingRequest is used for health checks.
+message PingRequest {
+  // Optional message
+  string message = 1;
+}
+
+// PingResponse acknowledges the ping.
+message PingResponse {
+  // Response message
+  string message = 1;
+
+  // Timestamp of the response
+  int64 timestamp = 2;
+}
+
+// GetNodeInfoRequest asks for the node's information.
+message GetNodeInfoRequest {
+  // Empty - no parameters needed
+}
+
+// GetNodeInfoResponse contains the node's information.
+message GetNodeInfoResponse {
+  // The node's information
+  Node node = 1;
+}
+
+// GetRequest retrieves a value by key from the DHT.
+message GetRequest {
+  // The key to retrieve
+  string key = 1;
+}
+
+// GetResponse contains the retrieved value.
+message GetResponse {
+  // The value (empty if not found)
+  bytes value = 1;
+
+  // Whether the key was found
+  bool found = 2;
+}
+
+// SetRequest stores a key-value pair in the DHT.
+message SetRequest {
+  // The key to store
+  string key = 1;
+
+  // The value to store
+  bytes value = 2;
+
+  // TTL in seconds (0 = no expiration)
+  int64 ttl_seconds = 3;
+}
+
+// SetResponse acknowledges the set operation.
+message SetResponse {
+  // Success indicator
+  bool success = 1;
+}
+
+// DeleteRequest removes a key from the DHT.
+message DeleteRequest {
+  // The key to delete
+  string key = 1;
+}
+
+// DeleteResponse acknowledges the delete operation.
+message DeleteResponse {
+  // Success indicator
+  bool success = 1;
+}
+
+// ClosestPrecedingFingerRequest asks for the closest preceding finger.
+message ClosestPrecedingFingerRequest {
+  // The ID to find the closest preceding finger for
+  bytes id = 1;
+}
+
+// ClosestPrecedingFingerResponse contains the closest preceding node.
+message ClosestPrecedingFingerResponse {
+  // The closest preceding node
+  Node node = 1;
+}
+
+// TransferKeysRequest asks a node to transfer keys in a range.
+message TransferKeysRequest {
+  // Start of the range (exclusive)
+  bytes start_id = 1;
+
+  // End of the range (inclusive)
+  bytes end_id = 2;
+}
+
+// KeyValuePair represents a single key-value pair.
+message KeyValuePair {
+  // The key
+  string key = 1;
+
+  // The value
+  bytes value = 2;
+
+  // TTL remaining in seconds (0 = no expiration)
+  int64 ttl_seconds = 3;
+}
+
+// TransferKeysResponse contains the keys in the requested range.
+message TransferKeysResponse {
+  // List of key-value pairs
+  repeated KeyValuePair keys = 1;
+
+  // Number of keys transferred
+  int32 count = 2;
+}
+
+// DeleteTransferredKeysRequest asks a node to delete keys in a range.
+message DeleteTransferredKeysRequest {
+  // Start of the range (exclusive)
+  bytes start_id = 1;
+
+  // End of the range (inclusive)
+  bytes end_id = 2;
+}
+
+// DeleteTransferredKeysResponse confirms deletion.
+message DeleteTransferredKeysResponse {
+  // Whether deletion was successful
+  bool success = 1;
+
+  // Number of keys deleted
+  int32 count = 2;
+}
+
+// ChordService defines the gRPC service for Chord protocol operations.
+service ChordService {
+  // FindSuccessor finds the successor of a given ID.
+  // This is the core Chord lookup operation.
+  rpc FindSuccessor(FindSuccessorRequest) returns (FindSuccessorResponse);
+
+  // GetPredecessor returns the node's predecessor.
+  rpc GetPredecessor(GetPredecessorRequest) returns (GetPredecessorResponse);
+
+  // Notify informs a node that another node might be its predecessor.
+  // Used during stabilization.
+  rpc Notify(NotifyRequest) returns (NotifyResponse);
+
+  // GetSuccessorList returns the node's successor list.
+  // Used for fault tolerance.
+  rpc GetSuccessorList(GetSuccessorListRequest) returns (GetSuccessorListResponse);
+
+  // Ping checks if a node is alive.
+  rpc Ping(PingRequest) returns (PingResponse);
+
+  // GetNodeInfo returns the node's information (ID, host, port).
+  // Used to get bootstrap node details before joining.
+  rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+
+  // ClosestPrecedingFinger returns the closest finger preceding an ID.
+  // Used during lookup to optimize the search.
+  rpc ClosestPrecedingFinger(ClosestPrecedingFingerRequest) returns (ClosestPrecedingFingerResponse);
+
+  // TransferKeys transfers keys in a given ID range.
+  // Used during node join to transfer ownership.
+  rpc TransferKeys(TransferKeysRequest) returns (TransferKeysResponse);
+
+  // DeleteTransferredKeys deletes keys in a given ID range.
+  // Used after successful key transfer to clean up duplicates.
+  rpc DeleteTransferredKeys(DeleteTransferredKeysRequest) returns (DeleteTransferredKeysResponse);
+
+  // Get retrieves a value by key from the DHT.
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // Set stores a key-value pair in the DHT.
+  rpc Set(SetRequest) returns (SetResponse);
+
+  // Delete removes a key from the DHT.
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+}

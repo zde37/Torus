@@ -1,0 +1,261 @@
+# Torus - Chord DHT Implementation
+# Git ignore file for backend (Go) and frontend (Next.js)
+
+#######################
+# Go Backend
+#######################
+
+# Binaries for programs and plugins
+backend/bin/
+backend/*.exe
+backend/*.exe~
+backend/*.dll
+backend/*.so
+backend/*.dylib
+
+# Test binary, built with `go test -c`
+backend/*.test
+
+# Output of the go coverage tool
+backend/*.out
+backend/coverage.txt
+backend/coverage.html
+
+# Dependency directories (remove if vendoring)
+backend/vendor/
+
+# Go workspace file
+backend/go.work
+
+# Build artifacts
+backend/dist/
+backend/build/
+
+# Air live reload (if used)
+backend/tmp/
+backend/.air.toml
+
+#######################
+# Frontend (Next.js)
+#######################
+
+# Dependencies
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+
+# Testing
+frontend/coverage/
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Production
+frontend/build/
+
+# Misc
+frontend/.DS_Store
+frontend/*.pem
+
+# Debug
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Local env files
+frontend/.env*.local
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Vercel
+frontend/.vercel
+
+# TypeScript
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+#######################
+# IDE & Editor Files
+#######################
+
+# VSCode
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# GoLand / IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+#######################
+# Operating System
+#######################
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+#######################
+# Logs & Temp Files
+#######################
+
+# General logs
+*.log
+logs/
+*.log.*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.cache
+
+#######################
+# Security & Secrets
+#######################
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.p12
+certs/
+secrets/
+
+# API keys and credentials
+credentials.json
+secrets.yaml
+
+#######################
+# Data & State
+#######################
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# BadgerDB data directory
+backend/data/
+data/
+
+# Storage snapshots
+snapshots/
+backup/
+
+#######################
+# Protobuf Generated
+#######################
+
+# Keep the .proto files, ignore generated code if regenerated
+# Uncomment if you want to ignore generated protobuf files:
+# backend/protobuf/protogen/*.pb.go
+
+#######################
+# Testing & Coverage
+#######################
+
+# Test artifacts
+test_results/
+testdata/output/
+
+# Benchmark results
+*.bench
+benchmark_results/
+
+#######################
+# Docker
+#######################
+
+# Docker volumes
+.docker/
+docker-compose.override.yml
+
+#######################
+# Package Managers
+#######################
+
+# Go modules download cache (optional)
+# backend/pkg/mod/
+
+# NPM/Yarn lock files (keep one, ignore others if mixing)
+# frontend/package-lock.json
+# frontend/yarn.lock
+
+#######################
+# Documentation Build
+#######################
+
+# Generated documentation
+docs/_build/
+site/
+
+#######################
+# Miscellaneous
+#######################
+
+TORUS_*.md
+
+# Compiled protobuf (if you regenerate)
+# *.pb.go
+
+# Air (Go live reload)
+.air.toml
+
+# Scratch/notes
+scratch/
+notes/
+TODO.local.md
+
+# OS generated files
+.Spotlight-V100
+.Trashes
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
