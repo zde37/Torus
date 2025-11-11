@@ -188,7 +188,7 @@ func TestGRPCServer_GetPredecessor(t *testing.T) {
 
 	// Set a predecessor
 	predID := big.NewInt(50)
-	predAddr := chord.NewNodeAddress(predID, "127.0.0.1", 8031)
+	predAddr := chord.NewNodeAddress(predID, "127.0.0.1", 8031, 8080)
 	node.Notify(predAddr)
 
 	// Now predecessor should be set
@@ -460,11 +460,12 @@ func TestNodeAddressToProto(t *testing.T) {
 	}{
 		{
 			name: "valid address",
-			addr: chord.NewNodeAddress(big.NewInt(42), "192.168.1.1", 8000),
+			addr: chord.NewNodeAddress(big.NewInt(42), "192.168.1.1", 8000, 8080),
 			expected: &pb.Node{
 				Id:   big.NewInt(42).Bytes(),
 				Host: "192.168.1.1",
 				Port: 8000,
+				HttpPort: 8080,
 			},
 		},
 		{
@@ -502,8 +503,9 @@ func TestProtoToNodeAddress(t *testing.T) {
 				Id:   big.NewInt(42).Bytes(),
 				Host: "192.168.1.1",
 				Port: 8000,
+				HttpPort: 8080,
 			},
-			expected: chord.NewNodeAddress(big.NewInt(42), "192.168.1.1", 8000),
+			expected: chord.NewNodeAddress(big.NewInt(42), "192.168.1.1", 8000, 8080),
 		},
 		{
 			name:     "nil node",
@@ -530,7 +532,7 @@ func TestProtoToNodeAddress(t *testing.T) {
 
 func TestProtoConversionRoundTrip(t *testing.T) {
 	// Test that converting to proto and back preserves data
-	original := chord.NewNodeAddress(big.NewInt(12345), "10.0.0.1", 9000)
+	original := chord.NewNodeAddress(big.NewInt(12345), "10.0.0.1", 9000, 8080)
 
 	// Convert to proto
 	pbNode := nodeAddressToProto(original)

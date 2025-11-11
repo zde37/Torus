@@ -190,7 +190,7 @@ func TestChordStorage_Predecessor(t *testing.T) {
 	})
 
 	t.Run("set and get predecessor", func(t *testing.T) {
-		expected := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080)
+		expected := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8081)
 
 		err := cs.SetPredecessor(ctx, expected)
 		require.NoError(t, err)
@@ -202,8 +202,8 @@ func TestChordStorage_Predecessor(t *testing.T) {
 	})
 
 	t.Run("update predecessor", func(t *testing.T) {
-		pred1 := NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080)
-		pred2 := NewNodeAddress(big.NewInt(2), "127.0.0.2", 9000)
+		pred1 := NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080, 8082)
+		pred2 := NewNodeAddress(big.NewInt(2), "127.0.0.2", 9000, 8083)
 
 		err := cs.SetPredecessor(ctx, pred1)
 		require.NoError(t, err)
@@ -217,7 +217,7 @@ func TestChordStorage_Predecessor(t *testing.T) {
 	})
 
 	t.Run("set nil predecessor (clear)", func(t *testing.T) {
-		pred := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080)
+		pred := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8085)
 
 		err := cs.SetPredecessor(ctx, pred)
 		require.NoError(t, err)
@@ -245,9 +245,9 @@ func TestChordStorage_SuccessorList(t *testing.T) {
 
 	t.Run("set and get successor list", func(t *testing.T) {
 		expected := []*NodeAddress{
-			NewNodeAddress(big.NewInt(10), "127.0.0.1", 8080),
-			NewNodeAddress(big.NewInt(20), "127.0.0.2", 8080),
-			NewNodeAddress(big.NewInt(30), "127.0.0.3", 8080),
+			NewNodeAddress(big.NewInt(10), "127.0.0.1", 8080, 8081),
+			NewNodeAddress(big.NewInt(20), "127.0.0.2", 8080, 8082),
+			NewNodeAddress(big.NewInt(30), "127.0.0.3", 8080, 8083),
 		}
 
 		err := cs.SetSuccessorList(ctx, expected)
@@ -264,11 +264,11 @@ func TestChordStorage_SuccessorList(t *testing.T) {
 
 	t.Run("update successor list", func(t *testing.T) {
 		list1 := []*NodeAddress{
-			NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080),
+			NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080, 8085),
 		}
 		list2 := []*NodeAddress{
-			NewNodeAddress(big.NewInt(2), "127.0.0.2", 8080),
-			NewNodeAddress(big.NewInt(3), "127.0.0.3", 8080),
+			NewNodeAddress(big.NewInt(2), "127.0.0.2", 8080, 8086),
+			NewNodeAddress(big.NewInt(3), "127.0.0.3", 8080, 8087),
 		}
 
 		err := cs.SetSuccessorList(ctx, list1)
@@ -307,7 +307,7 @@ func TestChordStorage_FingerEntry(t *testing.T) {
 	t.Run("set and get finger entry", func(t *testing.T) {
 		expected := NewFingerEntry(
 			big.NewInt(100),
-			NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080),
+			NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8081),
 		)
 
 		err := cs.SetFingerEntry(ctx, 5, expected)
@@ -323,11 +323,11 @@ func TestChordStorage_FingerEntry(t *testing.T) {
 	t.Run("update finger entry", func(t *testing.T) {
 		entry1 := NewFingerEntry(
 			big.NewInt(10),
-			NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080),
+			NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080, 8084),
 		)
 		entry2 := NewFingerEntry(
 			big.NewInt(20),
-			NewNodeAddress(big.NewInt(2), "127.0.0.2", 9000),
+			NewNodeAddress(big.NewInt(2), "127.0.0.2", 9000, 8085),
 		)
 
 		err := cs.SetFingerEntry(ctx, 10, entry1)
@@ -344,7 +344,7 @@ func TestChordStorage_FingerEntry(t *testing.T) {
 	t.Run("set nil finger entry (clear)", func(t *testing.T) {
 		entry := NewFingerEntry(
 			big.NewInt(10),
-			NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080),
+			NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080, 8087),
 		)
 
 		err := cs.SetFingerEntry(ctx, 15, entry)
@@ -375,15 +375,15 @@ func TestChordStorage_AllFingerEntries(t *testing.T) {
 		toSet := map[int]*FingerEntry{
 			0: NewFingerEntry(
 				big.NewInt(10),
-				NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080),
+				NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080, 8089),
 			),
 			5: NewFingerEntry(
 				big.NewInt(50),
-				NewNodeAddress(big.NewInt(5), "127.0.0.5", 8080),
+				NewNodeAddress(big.NewInt(5), "127.0.0.5", 8080, 8088),
 			),
 			10: NewFingerEntry(
 				big.NewInt(100),
-				NewNodeAddress(big.NewInt(10), "127.0.0.10", 8080),
+				NewNodeAddress(big.NewInt(10), "127.0.0.10", 8080, 8090),
 			),
 		}
 
@@ -498,7 +498,7 @@ func TestChordStorage_Clear(t *testing.T) {
 	// Add some data
 	err := cs.Set(ctx, "key1", []byte("value1"), 0)
 	require.NoError(t, err)
-	err = cs.SetPredecessor(ctx, NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080))
+	err = cs.SetPredecessor(ctx, NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080, 8081))
 	require.NoError(t, err)
 
 	// Clear

@@ -7,25 +7,28 @@ import (
 
 // NodeAddress represents a node in the Chord ring with its identifier and network address.
 type NodeAddress struct {
-	ID   *big.Int // Node identifier in the Chord ring (0 to 2^M - 1)
-	Host string   // Network host (IP address or hostname)
-	Port int      // Network port
+	ID       *big.Int // Node identifier in the Chord ring (0 to 2^M - 1)
+	Host     string   // Network host (IP address or hostname)
+	Port     int      // Network port (gRPC)
+	HTTPPort int      // HTTP API port
 }
 
 // NewNodeAddress creates a new NodeAddress with the given parameters.
 // The ID is copied to prevent external modification.
-func NewNodeAddress(id *big.Int, host string, port int) *NodeAddress {
+func NewNodeAddress(id *big.Int, host string, port int, httpPort int) *NodeAddress {
 	if id == nil {
 		return &NodeAddress{
-			ID:   new(big.Int),
-			Host: host,
-			Port: port,
+			ID:       new(big.Int),
+			Host:     host,
+			Port:     port,
+			HTTPPort: httpPort,
 		}
 	}
 	return &NodeAddress{
-		ID:   new(big.Int).Set(id),
-		Host: host,
-		Port: port,
+		ID:       new(big.Int).Set(id),
+		Host:     host,
+		Port:     port,
+		HTTPPort: httpPort,
 	}
 }
 
@@ -73,7 +76,7 @@ func (n *NodeAddress) Copy() *NodeAddress {
 	if n == nil {
 		return nil
 	}
-	return NewNodeAddress(n.ID, n.Host, n.Port)
+	return NewNodeAddress(n.ID, n.Host, n.Port, n.HTTPPort)
 }
 
 // IsNil checks if the NodeAddress is nil or has a nil ID.

@@ -84,7 +84,7 @@ func NewChordNode(cfg *config.Config, logger *pkg.Logger) (*ChordNode, error) {
 	nodeID := hash.HashAddress(cfg.Host, cfg.Port)
 
 	// Create node address
-	address := NewNodeAddress(nodeID, cfg.Host, cfg.Port)
+	address := NewNodeAddress(nodeID, cfg.Host, cfg.Port, cfg.HTTPPort)
 
 	// Create storage
 	chordStorage := NewDefaultChordStorage()

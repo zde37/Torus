@@ -240,7 +240,7 @@ func TestChordNode_SuccessorOperations(t *testing.T) {
 	defer node.Shutdown()
 
 	t.Run("set and get successor", func(t *testing.T) {
-		succ := NewNodeAddress(big.NewInt(100), "127.0.0.1", 9000)
+		succ := NewNodeAddress(big.NewInt(100), "127.0.0.1", 9000, 8081)
 		node.setSuccessor(succ)
 
 		retrieved := node.successor()
@@ -256,9 +256,9 @@ func TestChordNode_SuccessorOperations(t *testing.T) {
 
 	t.Run("successor list operations", func(t *testing.T) {
 		list := []*NodeAddress{
-			NewNodeAddress(big.NewInt(10), "127.0.0.1", 9001),
-			NewNodeAddress(big.NewInt(20), "127.0.0.1", 9002),
-			NewNodeAddress(big.NewInt(30), "127.0.0.1", 9003),
+			NewNodeAddress(big.NewInt(10), "127.0.0.1", 9001, 8082),
+			NewNodeAddress(big.NewInt(20), "127.0.0.1", 9002, 8083),
+			NewNodeAddress(big.NewInt(30), "127.0.0.1", 9003, 8084),
 		}
 
 		node.setSuccessorList(list)
@@ -274,7 +274,7 @@ func TestChordNode_SuccessorOperations(t *testing.T) {
 		// Create many successors
 		list := make([]*NodeAddress, 10)
 		for i := 0; i < 10; i++ {
-			list[i] = NewNodeAddress(big.NewInt(int64(i*10)), "127.0.0.1", 9000+i)
+			list[i] = NewNodeAddress(big.NewInt(int64(i*10)), "127.0.0.1", 9000+i, 8086+i)
 		}
 
 		node.setSuccessorList(list)
@@ -290,7 +290,7 @@ func TestChordNode_PredecessorOperations(t *testing.T) {
 	defer node.Shutdown()
 
 	t.Run("set and get predecessor", func(t *testing.T) {
-		pred := NewNodeAddress(big.NewInt(50), "127.0.0.1", 7000)
+		pred := NewNodeAddress(big.NewInt(50), "127.0.0.1", 7000, 8081)
 		node.setPredecessor(pred)
 
 		retrieved := node.getPredecessor()
@@ -305,13 +305,14 @@ func TestChordNode_PredecessorOperations(t *testing.T) {
 	})
 
 	t.Run("predecessor is copied", func(t *testing.T) {
-		pred := NewNodeAddress(big.NewInt(50), "127.0.0.1", 7000)
+		pred := NewNodeAddress(big.NewInt(50), "127.0.0.1", 7000, 8082)
 		node.setPredecessor(pred)
 
 		pred.Port = 9999 // Modify original
 
 		retrieved := node.getPredecessor()
 		assert.Equal(t, 7000, retrieved.Port) // Should still be 7000
+		assert.Equal(t, 8082, retrieved.HTTPPort) // Should still be 8082
 	})
 }
 
@@ -322,7 +323,7 @@ func TestChordNode_FingerTableOperations(t *testing.T) {
 	t.Run("set and get finger", func(t *testing.T) {
 		entry := NewFingerEntry(
 			big.NewInt(100),
-			NewNodeAddress(big.NewInt(200), "127.0.0.1", 9000),
+			NewNodeAddress(big.NewInt(200), "127.0.0.1", 9000, 8081),
 		)
 
 		node.setFinger(5, entry)
@@ -346,7 +347,7 @@ func TestChordNode_FingerTableOperations(t *testing.T) {
 	})
 
 	t.Run("init finger table", func(t *testing.T) {
-		succ := NewNodeAddress(big.NewInt(500), "127.0.0.1", 9000)
+		succ := NewNodeAddress(big.NewInt(500), "127.0.0.1", 9000, 8084)
 		node.initFingerTable(succ)
 
 		// All fingers should point to successor
@@ -393,7 +394,7 @@ func TestChordNode_ClosestPrecedingNode(t *testing.T) {
 	defer node.Shutdown()
 
 	// Setup finger table with some entries
-	succ := NewNodeAddress(big.NewInt(1000), "127.0.0.1", 9000)
+	succ := NewNodeAddress(big.NewInt(1000), "127.0.0.1", 9000, 8081)
 	node.initFingerTable(succ)
 
 	t.Run("finds closest preceding node", func(t *testing.T) {
@@ -424,7 +425,7 @@ func TestChordNode_Notify(t *testing.T) {
 		assert.Nil(t, node.getPredecessor())
 
 		// Any node can become predecessor
-		newPred := NewNodeAddress(big.NewInt(50), "127.0.0.1", 7000)
+		newPred := NewNodeAddress(big.NewInt(50), "127.0.0.1", 7000, 8081)
 		node.notify(newPred)
 
 		pred := node.getPredecessor()
@@ -438,6 +439,7 @@ func TestChordNode_Notify(t *testing.T) {
 			new(big.Int).Sub(nodeID, big.NewInt(100)),
 			"127.0.0.1",
 			7000,
+			8082,
 		)
 		node.setPredecessor(oldPred)
 
@@ -446,6 +448,7 @@ func TestChordNode_Notify(t *testing.T) {
 			new(big.Int).Sub(nodeID, big.NewInt(50)),
 			"127.0.0.1",
 			7001,
+			8083,
 		)
 		node.notify(newPred)
 
@@ -460,6 +463,7 @@ func TestChordNode_Notify(t *testing.T) {
 			new(big.Int).Sub(nodeID, big.NewInt(10)),
 			"127.0.0.1",
 			7000,
+			8084,
 		)
 		node.setPredecessor(goodPred)
 
@@ -468,6 +472,7 @@ func TestChordNode_Notify(t *testing.T) {
 			new(big.Int).Sub(nodeID, big.NewInt(200)),
 			"127.0.0.1",
 			7001,
+			8085,
 		)
 		node.notify(badPred)
 
@@ -591,7 +596,7 @@ func TestChordNode_ConcurrentAccess(t *testing.T) {
 
 			// Concurrent writes
 			if id%2 == 0 {
-				addr := NewNodeAddress(big.NewInt(int64(id)), "127.0.0.1", 9000+id)
+				addr := NewNodeAddress(big.NewInt(int64(id)), "127.0.0.1", 9000+id, 8081+id)
 				node.setPredecessor(addr)
 			}
 		}(i)

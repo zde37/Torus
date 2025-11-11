@@ -29,8 +29,10 @@ type Node struct {
 	Id []byte `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Network host (IP address or hostname)
 	Host string `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
-	// Network port
-	Port          int32 `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
+	// Network port (gRPC)
+	Port int32 `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
+	// HTTP API port
+	HttpPort      int32 `protobuf:"varint,4,opt,name=http_port,json=httpPort,proto3" json:"http_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -82,6 +84,13 @@ func (x *Node) GetHost() string {
 func (x *Node) GetPort() int32 {
 	if x != nil {
 		return x.Port
+	}
+	return 0
+}
+
+func (x *Node) GetHttpPort() int32 {
+	if x != nil {
+		return x.HttpPort
 	}
 	return 0
 }
@@ -1303,11 +1312,12 @@ var File_chord_proto protoreflect.FileDescriptor
 
 const file_chord_proto_rawDesc = "" +
 	"\n" +
-	"\vchord.proto\x12\bprotogen\x1a\x1cgoogle/api/annotations.proto\">\n" +
+	"\vchord.proto\x12\bprotogen\x1a\x1cgoogle/api/annotations.proto\"[\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
-	"\x04port\x18\x03 \x01(\x05R\x04port\"&\n" +
+	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1b\n" +
+	"\thttp_port\x18\x04 \x01(\x05R\bhttpPort\"&\n" +
 	"\x14FindSuccessorRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\"E\n" +
 	"\x15FindSuccessorResponse\x12,\n" +

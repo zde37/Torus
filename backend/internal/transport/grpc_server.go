@@ -339,9 +339,10 @@ func nodeAddressToProto(addr *chord.NodeAddress) *pb.Node {
 	}
 
 	return &pb.Node{
-		Id:   addr.ID.Bytes(),
-		Host: addr.Host,
-		Port: int32(addr.Port),
+		Id:       addr.ID.Bytes(),
+		Host:     addr.Host,
+		Port:     int32(addr.Port),
+		HttpPort: int32(addr.HTTPPort),
 	}
 }
 
@@ -352,5 +353,5 @@ func protoToNodeAddress(node *pb.Node) *chord.NodeAddress {
 	}
 
 	id := new(big.Int).SetBytes(node.Id)
-	return chord.NewNodeAddress(id, node.Host, int(node.Port))
+	return chord.NewNodeAddress(id, node.Host, int(node.Port), int(node.HttpPort))
 }

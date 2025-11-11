@@ -106,7 +106,7 @@ func TestGRPCClient_GetPredecessor(t *testing.T) {
 	assert.Nil(t, pred)
 
 	// Set a predecessor
-	predAddr := chord.NewNodeAddress(big.NewInt(50), "127.0.0.1", 8211)
+	predAddr := chord.NewNodeAddress(big.NewInt(50), "127.0.0.1", 8211, 8080)
 	node.Notify(predAddr)
 
 	// Now should get the predecessor
@@ -138,7 +138,7 @@ func TestGRPCClient_Notify(t *testing.T) {
 	defer client.Close()
 
 	// Send notification
-	notifyNode := chord.NewNodeAddress(big.NewInt(75), "127.0.0.1", 8221)
+	notifyNode := chord.NewNodeAddress(big.NewInt(75), "127.0.0.1", 8221, 8081)
 	err = client.Notify("127.0.0.1:9220", notifyNode)
 
 	assert.NoError(t, err)

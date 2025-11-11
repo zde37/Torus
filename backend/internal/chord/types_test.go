@@ -10,37 +10,42 @@ import (
 
 func TestNewNodeAddress(t *testing.T) {
 	tests := []struct {
-		name string
-		id   *big.Int
-		host string
-		port int
+		name     string
+		id       *big.Int
+		host     string
+		port     int
+		httpPort int
 	}{
 		{
-			name: "valid node",
-			id:   big.NewInt(42),
-			host: "127.0.0.1",
-			port: 8080,
+			name:     "valid node",
+			id:       big.NewInt(42),
+			host:     "127.0.0.1",
+			port:     8080,
+			httpPort: 8081,
 		},
 		{
-			name: "large ID",
-			id:   new(big.Int).Exp(big.NewInt(2), big.NewInt(159), nil),
-			host: "192.168.1.1",
-			port: 9000,
+			name:     "large ID",
+			id:       new(big.Int).Exp(big.NewInt(2), big.NewInt(159), nil),
+			host:     "192.168.1.1",
+			port:     9000,
+			httpPort: 9001,
 		},
 		{
-			name: "nil ID",
-			id:   nil,
-			host: "localhost",
-			port: 8440,
+			name:     "nil ID",
+			id:       nil,
+			host:     "localhost",
+			port:     8440,
+			httpPort: 8441,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			node := NewNodeAddress(tt.id, tt.host, tt.port)
+			node := NewNodeAddress(tt.id, tt.host, tt.port, tt.httpPort)
 			require.NotNil(t, node)
 			assert.Equal(t, tt.host, node.Host)
 			assert.Equal(t, tt.port, node.Port)
+			assert.Equal(t, tt.httpPort, node.HTTPPort)
 			assert.NotNil(t, node.ID)
 
 			if tt.id != nil {
@@ -60,7 +65,7 @@ func TestNodeAddress_String(t *testing.T) {
 	}{
 		{
 			name: "valid node",
-			node: NewNodeAddress(big.NewInt(255), "127.0.0.1", 8080),
+			node: NewNodeAddress(big.NewInt(255), "127.0.0.1", 8080, 8081),
 			contains: []string{
 				"NodeAddress",
 				"ff", // 255 in hex
@@ -74,7 +79,7 @@ func TestNodeAddress_String(t *testing.T) {
 		},
 		{
 			name: "zero ID",
-			node: NewNodeAddress(big.NewInt(0), "localhost", 9000),
+			node: NewNodeAddress(big.NewInt(0), "localhost", 9000, 8081),
 			contains: []string{
 				"NodeAddress",
 				"0",
@@ -101,12 +106,12 @@ func TestNodeAddress_Address(t *testing.T) {
 	}{
 		{
 			name:     "valid node",
-			node:     NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080),
+			node:     NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080, 8081),
 			expected: "127.0.0.1:8080",
 		},
 		{
 			name:     "different port",
-			node:     NewNodeAddress(big.NewInt(2), "192.168.1.1", 9000),
+			node:     NewNodeAddress(big.NewInt(2), "192.168.1.1", 9000, 8081),
 			expected: "192.168.1.1:9000",
 		},
 		{
@@ -124,11 +129,11 @@ func TestNodeAddress_Address(t *testing.T) {
 }
 
 func TestNodeAddress_Equals(t *testing.T) {
-	node1 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080)
-	node2 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080)
-	node3 := NewNodeAddress(big.NewInt(43), "127.0.0.1", 8080)
-	node4 := NewNodeAddress(big.NewInt(42), "127.0.0.2", 8080)
-	node5 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8081)
+	node1 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8081)
+	node2 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8081)
+	node3 := NewNodeAddress(big.NewInt(43), "127.0.0.1", 8080, 8081)
+	node4 := NewNodeAddress(big.NewInt(42), "127.0.0.2", 8080, 8081)
+	node5 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8081, 8081)
 
 	tests := []struct {
 		name     string
@@ -167,6 +172,12 @@ func TestNodeAddress_Equals(t *testing.T) {
 			expected: false,
 		},
 		{
+			name:     "different http port",
+			node1:    node1,
+			node2:    node5,
+			expected: false,
+		},
+		{
 			name:     "both nil",
 			node1:    nil,
 			node2:    nil,
@@ -186,14 +197,14 @@ func TestNodeAddress_Equals(t *testing.T) {
 		},
 		{
 			name:     "nil IDs, same address",
-			node1:    NewNodeAddress(nil, "127.0.0.1", 8080),
-			node2:    NewNodeAddress(nil, "127.0.0.1", 8080),
+			node1:    NewNodeAddress(nil, "127.0.0.1", 8080, 8081),
+			node2:    NewNodeAddress(nil, "127.0.0.1", 8080, 8081),
 			expected: true,
 		},
 		{
 			name:     "nil IDs, different address",
-			node1:    NewNodeAddress(nil, "127.0.0.1", 8080),
-			node2:    NewNodeAddress(nil, "127.0.0.2", 8080),
+			node1:    NewNodeAddress(nil, "127.0.0.1", 8080, 8081),
+			node2:    NewNodeAddress(nil, "127.0.0.2", 8080, 8081),
 			expected: false,
 		},
 	}
@@ -207,7 +218,7 @@ func TestNodeAddress_Equals(t *testing.T) {
 
 func TestNodeAddress_Copy(t *testing.T) {
 	t.Run("copy valid node", func(t *testing.T) {
-		original := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080)
+		original := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8081)
 		copy := original.Copy()
 
 		require.NotNil(t, copy)
@@ -236,7 +247,7 @@ func TestNodeAddress_IsNil(t *testing.T) {
 	}{
 		{
 			name:     "valid node",
-			node:     NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080),
+			node:     NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080, 8081),
 			expected: false,
 		},
 		{
@@ -247,9 +258,10 @@ func TestNodeAddress_IsNil(t *testing.T) {
 		{
 			name: "node with nil ID",
 			node: &NodeAddress{
-				ID:   nil,
-				Host: "127.0.0.1",
-				Port: 8080,
+				ID:       nil,
+				Host:     "127.0.0.1",
+				Port:     8080,
+				HTTPPort: 8081,
 			},
 			expected: true,
 		},
@@ -271,12 +283,12 @@ func TestNewFingerEntry(t *testing.T) {
 		{
 			name:  "valid entry",
 			start: big.NewInt(100),
-			node:  NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080),
+			node:  NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8081),
 		},
 		{
 			name:  "nil start",
 			start: nil,
-			node:  NewNodeAddress(big.NewInt(1), "localhost", 9000),
+			node:  NewNodeAddress(big.NewInt(1), "localhost", 9000, 8082),
 		},
 		{
 			name:  "nil node",
@@ -317,7 +329,7 @@ func TestFingerEntry_String(t *testing.T) {
 			name: "valid entry",
 			entry: NewFingerEntry(
 				big.NewInt(255),
-				NewNodeAddress(big.NewInt(300), "127.0.0.1", 8080),
+				NewNodeAddress(big.NewInt(300), "127.0.0.1", 8080, 8081),
 			),
 			contains: []string{
 				"FingerEntry",
@@ -333,7 +345,7 @@ func TestFingerEntry_String(t *testing.T) {
 			name: "nil start",
 			entry: &FingerEntry{
 				Start: nil,
-				Node:  NewNodeAddress(big.NewInt(1), "localhost", 9000),
+				Node:  NewNodeAddress(big.NewInt(1), "localhost", 9000, 8082),
 			},
 			contains: []string{"FingerEntry", "<nil>"},
 		},
@@ -353,7 +365,7 @@ func TestFingerEntry_Copy(t *testing.T) {
 	t.Run("copy valid entry", func(t *testing.T) {
 		original := NewFingerEntry(
 			big.NewInt(100),
-			NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080),
+			NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8081),
 		)
 		copy := original.Copy()
 
@@ -388,7 +400,7 @@ func TestFingerEntry_IsNil(t *testing.T) {
 			name: "valid entry",
 			entry: NewFingerEntry(
 				big.NewInt(1),
-				NewNodeAddress(big.NewInt(2), "127.0.0.1", 8080),
+				NewNodeAddress(big.NewInt(2), "127.0.0.1", 8080, 8081),
 			),
 			expected: false,
 		},
@@ -401,7 +413,7 @@ func TestFingerEntry_IsNil(t *testing.T) {
 			name: "nil start",
 			entry: &FingerEntry{
 				Start: nil,
-				Node:  NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080),
+				Node:  NewNodeAddress(big.NewInt(1), "127.0.0.1", 8080, 8081),
 			},
 			expected: true,
 		},
@@ -418,9 +430,10 @@ func TestFingerEntry_IsNil(t *testing.T) {
 			entry: &FingerEntry{
 				Start: big.NewInt(1),
 				Node: &NodeAddress{
-					ID:   nil,
-					Host: "127.0.0.1",
-					Port: 8080,
+					ID:       nil,
+					Host:     "127.0.0.1",
+					Port:     8080,
+					HTTPPort: 8081,
 				},
 			},
 			expected: true,
@@ -440,6 +453,7 @@ func BenchmarkNodeAddress_Copy(b *testing.B) {
 		new(big.Int).Exp(big.NewInt(2), big.NewInt(159), nil),
 		"127.0.0.1",
 		8080,
+		8081,
 	)
 
 	b.ResetTimer()
@@ -449,8 +463,8 @@ func BenchmarkNodeAddress_Copy(b *testing.B) {
 }
 
 func BenchmarkNodeAddress_Equals(b *testing.B) {
-	node1 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080)
-	node2 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080)
+	node1 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8081)
+	node2 := NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8082)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -461,7 +475,7 @@ func BenchmarkNodeAddress_Equals(b *testing.B) {
 func BenchmarkFingerEntry_Copy(b *testing.B) {
 	entry := NewFingerEntry(
 		big.NewInt(100),
-		NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080),
+		NewNodeAddress(big.NewInt(42), "127.0.0.1", 8080, 8081),
 	)
 
 	b.ResetTimer()
