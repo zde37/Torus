@@ -6,8 +6,11 @@ all: proto test
 # Generate protobuf code
 proto:
 	@echo "Generating protobuf code..."
-	protoc --go_out=. --go_opt=module=github.com/zde37/torus \
+	protoc -I protobuf/proto \
+		--go_out=. --go_opt=module=github.com/zde37/torus \
 		--go-grpc_out=. --go-grpc_opt=module=github.com/zde37/torus \
+		--grpc-gateway_out=. --grpc-gateway_opt=module=github.com/zde37/torus \
+		--grpc-gateway_opt=logtostderr=true \
 		protobuf/proto/chord.proto
 	@echo "Protobuf code generated successfully!"
 
@@ -19,7 +22,7 @@ test:
 # Run tests with race detection
 test-race:
 	@go test -count=1 -v -race ./...
-	
+
 # Run tests with verbose output
 test-verbose:
 	@echo "Running tests (verbose)..."
@@ -42,6 +45,7 @@ clean-proto:
 	@echo "Cleaning generated protobuf files..."
 	rm -f protobuf/protogen/chord.pb.go
 	rm -f protobuf/protogen/chord_grpc.pb.go
+	rm -f protobuf/protogen/chord.pb.gw.go
 	@echo "Protobuf files cleaned!"
 
 # Clean test artifacts
@@ -82,6 +86,8 @@ install-tools:
 	@echo "Installing development tools..."
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+	go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2@latest
 	@echo "Tools installed!"
 
 # Run all checks (format, lint, test)

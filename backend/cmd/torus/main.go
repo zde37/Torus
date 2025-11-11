@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/zde37/torus/internal/api"
 	"github.com/zde37/torus/internal/chord"
 	"github.com/zde37/torus/internal/config"
 	"github.com/zde37/torus/internal/transport"
@@ -90,13 +91,35 @@ func main() {
 	grpcClient := transport.NewGRPCClient(logger, cfg.RPCTimeout)
 	node.SetRemote(grpcClient)
 
+	// Create HTTP API server
+	httpServer, err := api.NewServer(&api.Config{
+		HTTPPort: cfg.HTTPPort,
+		GRPCAddr: serverAddr,
+	}, logger)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to create HTTP API server")
+		cleanup(node, grpcServer, grpcClient, nil, logger)
+		os.Exit(1)
+	}
+
+	// Start HTTP API server
+	if err := httpServer.Start(cfg.HTTPPort); err != nil {
+		logger.Error().Err(err).Msg("Failed to start HTTP API server")
+		cleanup(node, grpcServer, grpcClient, nil, logger)
+		os.Exit(1)
+	}
+
+	logger.Info().
+		Int("port", cfg.HTTPPort).
+		Msg("HTTP API server started")
+
 	// Create or join Chord ring
 	if *bootstrap == "" {
 		// No bootstrap node specified, create new ring
 		logger.Info().Msg("Creating new Chord ring")
 		if err := node.Create(); err != nil {
 			logger.Error().Err(err).Msg("Failed to create Chord ring")
-			cleanup(node, grpcServer, grpcClient, logger)
+			cleanup(node, grpcServer, grpcClient, httpServer, logger)
 			os.Exit(1)
 		}
 		logger.Info().
@@ -119,7 +142,7 @@ func main() {
 				Err(err).
 				Str("bootstrap", *bootstrap).
 				Msg("Failed to get bootstrap node information")
-			cleanup(node, grpcServer, grpcClient, logger)
+			cleanup(node, grpcServer, grpcClient, httpServer, logger)
 			os.Exit(1)
 		}
 
@@ -131,7 +154,7 @@ func main() {
 		// Join the ring
 		if err := node.Join(bootstrapNode); err != nil {
 			logger.Error().Err(err).Msg("Failed to join Chord ring")
-			cleanup(node, grpcServer, grpcClient, logger)
+			cleanup(node, grpcServer, grpcClient, httpServer, logger)
 			os.Exit(1)
 		}
 
@@ -152,17 +175,24 @@ func main() {
 		Msg("Received shutdown signal")
 
 	// Cleanup
-	cleanup(node, grpcServer, grpcClient, logger)
+	cleanup(node, grpcServer, grpcClient, httpServer, logger)
 
 	logger.Info().Msg("Torus node shutdown complete")
 }
 
 // cleanup performs graceful shutdown of all components
-func cleanup(node *chord.ChordNode, server *transport.GRPCServer, client *transport.GRPCClient, logger *pkg.Logger) {
+func cleanup(node *chord.ChordNode, grpcServer *transport.GRPCServer, grpcClient *transport.GRPCClient, httpServer *api.Server, logger *pkg.Logger) {
 	logger.Info().Msg("Starting graceful shutdown")
 
+	// Stop HTTP server
+	if httpServer != nil {
+		if err := httpServer.Stop(); err != nil {
+			logger.Error().Err(err).Msg("Error stopping HTTP server")
+		}
+	}
+
 	// Stop gRPC server
-	if err := server.Stop(); err != nil {
+	if err := grpcServer.Stop(); err != nil {
 		logger.Error().Err(err).Msg("Error stopping gRPC server")
 	}
 
@@ -172,7 +202,7 @@ func cleanup(node *chord.ChordNode, server *transport.GRPCServer, client *transp
 	}
 
 	// Close gRPC client connections
-	if err := client.Close(); err != nil {
+	if err := grpcClient.Close(); err != nil {
 		logger.Error().Err(err).Msg("Error closing gRPC client")
 	}
 }

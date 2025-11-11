@@ -4,6 +4,8 @@ package protogen;
 
 option go_package = "github.com/zde37/torus/protobuf/protogen";
 
+import "google/api/annotations.proto";
+
 // Node represents a node in the Chord ring.
 message Node {
   // Node ID as a byte array (160 bits / 20 bytes)
@@ -208,14 +210,26 @@ service ChordService {
 
   // GetSuccessorList returns the node's successor list.
   // Used for fault tolerance.
-  rpc GetSuccessorList(GetSuccessorListRequest) returns (GetSuccessorListResponse);
+  rpc GetSuccessorList(GetSuccessorListRequest) returns (GetSuccessorListResponse) {
+    option (google.api.http) = {
+      get: "/api/node/successors"
+    };
+  }
 
   // Ping checks if a node is alive.
-  rpc Ping(PingRequest) returns (PingResponse);
+  rpc Ping(PingRequest) returns (PingResponse) {
+    option (google.api.http) = {
+      get: "/api/node/ping"
+    };
+  }
 
   // GetNodeInfo returns the node's information (ID, host, port).
   // Used to get bootstrap node details before joining.
-  rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse);
+  rpc GetNodeInfo(GetNodeInfoRequest) returns (GetNodeInfoResponse) {
+    option (google.api.http) = {
+      get: "/api/node/info"
+    };
+  }
 
   // ClosestPrecedingFinger returns the closest finger preceding an ID.
   // Used during lookup to optimize the search.
@@ -230,11 +244,24 @@ service ChordService {
   rpc DeleteTransferredKeys(DeleteTransferredKeysRequest) returns (DeleteTransferredKeysResponse);
 
   // Get retrieves a value by key from the DHT.
-  rpc Get(GetRequest) returns (GetResponse);
+  rpc Get(GetRequest) returns (GetResponse) {
+    option (google.api.http) = {
+      get: "/api/keys/{key}"
+    };
+  }
 
   // Set stores a key-value pair in the DHT.
-  rpc Set(SetRequest) returns (SetResponse);
+  rpc Set(SetRequest) returns (SetResponse) {
+    option (google.api.http) = {
+      post: "/api/keys"
+      body: "*"
+    };
+  }
 
   // Delete removes a key from the DHT.
-  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse) {
+    option (google.api.http) = {
+      delete: "/api/keys/{key}"
+    };
+  }
 }
