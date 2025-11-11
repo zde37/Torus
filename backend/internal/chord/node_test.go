@@ -152,6 +152,10 @@ func (m *mockRemoteClient) FindSuccessor(address string, id *big.Int) (*NodeAddr
 	return m.bootstrap, nil
 }
 
+func (m *mockRemoteClient) FindSuccessorWithPath(address string, id *big.Int) (*NodeAddress, []*NodeAddress, error) {
+	return nil, nil, nil
+}
+
 func (m *mockRemoteClient) GetPredecessor(address string) (*NodeAddress, error) {
 	return nil, nil
 }
@@ -311,7 +315,7 @@ func TestChordNode_PredecessorOperations(t *testing.T) {
 		pred.Port = 9999 // Modify original
 
 		retrieved := node.getPredecessor()
-		assert.Equal(t, 7000, retrieved.Port) // Should still be 7000
+		assert.Equal(t, 7000, retrieved.Port)     // Should still be 7000
 		assert.Equal(t, 8082, retrieved.HTTPPort) // Should still be 8082
 	})
 }
@@ -343,7 +347,7 @@ func TestChordNode_FingerTableOperations(t *testing.T) {
 	t.Run("get invalid index", func(t *testing.T) {
 		assert.Nil(t, node.getFinger(-1))
 		assert.Nil(t, node.getFinger(hash.M))
-		assert.Nil(t, node.getFinger(hash.M + 1))
+		assert.Nil(t, node.getFinger(hash.M+1))
 	})
 
 	t.Run("init finger table", func(t *testing.T) {

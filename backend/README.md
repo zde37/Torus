@@ -116,4 +116,4 @@ When adding new features:
 
 ## License
 
-[Add your license here]
+MIT Liscense

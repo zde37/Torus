@@ -9,6 +9,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zde37/torus/pkg"
 	pb "github.com/zde37/torus/protobuf/protogen"
@@ -52,7 +53,9 @@ func (s *Server) Start(port int) error {
 	// Create gRPC-gateway mux
 	mux := runtime.NewServeMux(
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
-			MarshalOptions: runtime.JSONPb{}.MarshalOptions,
+			MarshalOptions: protojson.MarshalOptions{
+				EmitUnpopulated: true, // Include zero values in JSON (e.g., hops: 0)
+			},
 			UnmarshalOptions: runtime.JSONPb{}.UnmarshalOptions,
 		}),
 	)

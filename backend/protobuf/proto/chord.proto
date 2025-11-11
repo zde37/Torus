@@ -19,6 +19,9 @@ message Node {
 
   // HTTP API port
   int32 http_port = 4;
+
+  // Number of user keys stored (excluding Chord metadata)
+  int32 key_count = 5;
 }
 
 // FindSuccessorRequest asks a node to find the successor of a given ID.
@@ -31,6 +34,21 @@ message FindSuccessorRequest {
 message FindSuccessorResponse {
   // The successor node
   Node successor = 1;
+}
+
+// FindSuccessorWithPathRequest asks a node to find the successor with path tracking.
+message FindSuccessorWithPathRequest {
+  // The ID to find the successor for
+  bytes id = 1;
+}
+
+// FindSuccessorWithPathResponse contains the successor and path from this node onwards.
+message FindSuccessorWithPathResponse {
+  // The successor node
+  Node successor = 1;
+
+  // Path taken from this node onwards (includes this node)
+  repeated Node path = 2;
 }
 
 // GetPredecessorRequest asks a node for its predecessor.
@@ -198,14 +216,69 @@ message DeleteTransferredKeysResponse {
   int32 count = 2;
 }
 
+// LookupPathRequest asks a node to find a key and return the path taken.
+message LookupPathRequest {
+  // The key to lookup
+  string key = 1;
+}
+
+// LookupPathResponse contains the lookup result and path taken.
+message LookupPathResponse {
+  // The key that was looked up
+  string key = 1;
+
+  // Hash of the key
+  bytes key_hash = 2;
+
+  // The node responsible for this key
+  Node responsible_node = 3;
+
+  // List of nodes visited during the lookup (in order)
+  repeated Node path = 4;
+
+  // Number of hops taken
+  int32 hops = 5;
+}
+
+// GetFingerTableRequest asks a node for its finger table.
+message GetFingerTableRequest {
+  // Empty - no parameters needed
+}
+
+// FingerTableEntry represents a single entry in the finger table.
+message FingerTableEntry {
+  // Start of the interval: (n + 2^(i-1)) mod 2^M
+  bytes start = 1;
+
+  // The node that succeeds or equals start
+  Node node = 2;
+
+  // Index in the finger table (0 to M-1)
+  int32 index = 3;
+}
+
+// GetFingerTableResponse contains the node's finger table.
+message GetFingerTableResponse {
+  // List of finger table entries
+  repeated FingerTableEntry entries = 1;
+}
+
 // ChordService defines the gRPC service for Chord protocol operations.
 service ChordService {
   // FindSuccessor finds the successor of a given ID.
   // This is the core Chord lookup operation.
   rpc FindSuccessor(FindSuccessorRequest) returns (FindSuccessorResponse);
 
+  // FindSuccessorWithPath finds the successor and returns the routing path.
+  // This is used internally for path tracking between nodes.
+  rpc FindSuccessorWithPath(FindSuccessorWithPathRequest) returns (FindSuccessorWithPathResponse);
+
   // GetPredecessor returns the node's predecessor.
-  rpc GetPredecessor(GetPredecessorRequest) returns (GetPredecessorResponse);
+  rpc GetPredecessor(GetPredecessorRequest) returns (GetPredecessorResponse) {
+    option (google.api.http) = {
+      get: "/api/node/predecessor"
+    };
+  }
 
   // Notify informs a node that another node might be its predecessor.
   // Used during stabilization.
@@ -265,6 +338,22 @@ service ChordService {
   rpc Delete(DeleteRequest) returns (DeleteResponse) {
     option (google.api.http) = {
       delete: "/api/keys/{key}"
+    };
+  }
+
+  // LookupPath finds the node responsible for a key and returns the path taken.
+  // Used for visualization and debugging.
+  rpc LookupPath(LookupPathRequest) returns (LookupPathResponse) {
+    option (google.api.http) = {
+      get: "/api/lookup/{key}"
+    };
+  }
+
+  // GetFingerTable returns the node's finger table.
+  // Used for visualization.
+  rpc GetFingerTable(GetFingerTableRequest) returns (GetFingerTableResponse) {
+    option (google.api.http) = {
+      get: "/api/node/fingers"
     };
   }
 }

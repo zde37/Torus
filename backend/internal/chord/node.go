@@ -634,6 +634,62 @@ func (n *ChordNode) FindSuccessor(id *big.Int) (*NodeAddress, error) {
 	return closestNode.Copy(), nil
 }
 
+// FindSuccessorWithPath finds the successor of a given ID and tracks the path taken.
+// This is used for visualization and debugging of the lookup process.
+func (n *ChordNode) FindSuccessorWithPath(id *big.Int) (*NodeAddress, []*NodeAddress, error) {
+	if id == nil {
+		return nil, nil, fmt.Errorf("id cannot be nil")
+	}
+
+	// Initialize path with the current node
+	path := []*NodeAddress{n.address.Copy()}
+
+	// Normalize ID to ring
+	id = hash.AddPowerOfTwo(id, 0) // This applies mod operation
+
+	// If ID is between (n, successor], then successor is the answer
+	succ := n.successor()
+	if succ == nil {
+		return n.address.Copy(), path, nil
+	}
+
+	if hash.InRange(id, n.id, succ.ID) {
+		return succ.Copy(), path, nil
+	}
+
+	// Otherwise, forward the query to the closest preceding node
+	closestNode := n.closestPrecedingNode(id)
+
+	// If closest node is self, return successor
+	if closestNode.Equals(n.address) {
+		return succ.Copy(), path, nil
+	}
+
+	// If we have a remote client, forward the query via RPC
+	if n.remote != nil {
+		// Forward to the next node and get its path
+		// Note: Don't add closestNode here - it will add itself to its path
+		successor, remotePath, err := n.remote.FindSuccessorWithPath(closestNode.Address(), id)
+		if err != nil {
+			n.logger.Debug().
+				Err(err).
+				Str("closest_node", closestNode.Address()).
+				Msg("Failed to forward FindSuccessorWithPath via RPC")
+			// Fall back to returning the closest node (with it in the path)
+			path = append(path, closestNode.Copy())
+			return closestNode.Copy(), path, nil
+		}
+
+		// Merge the paths - remotePath already includes closestNode as its first element
+		path = append(path, remotePath...)
+		return successor, path, nil
+	}
+
+	// No remote client, return the closest node as best effort
+	path = append(path, closestNode.Copy())
+	return closestNode.Copy(), path, nil
+}
+
 // closestPrecedingNode finds the closest node that precedes the given ID.
 // This is used to optimize lookups by jumping closer to the target.
 func (n *ChordNode) closestPrecedingNode(id *big.Int) *NodeAddress {
@@ -919,4 +975,31 @@ func (n *ChordNode) Delete(ctx context.Context, key string) error {
 	}
 
 	return nil
+}
+
+// HashKey hashes a key string to a big.Int for consistent hashing.
+func (n *ChordNode) HashKey(key string) *big.Int {
+	return hash.HashKey([]byte(key))
+}
+
+// GetFingerTable returns a copy of the node's finger table.
+func (n *ChordNode) GetFingerTable() []*FingerEntry {
+	n.fingerMu.RLock()
+	defer n.fingerMu.RUnlock()
+
+	// Create a copy of the finger table
+	entries := make([]*FingerEntry, len(n.fingerTable))
+	for i, finger := range n.fingerTable {
+		if finger != nil {
+			entries[i] = finger.Copy()
+		}
+	}
+
+	return entries
+}
+
+// GetKeyCount returns the number of user keys stored on this node.
+// Excludes Chord metadata keys (predecessor, successors, finger table).
+func (n *ChordNode) GetKeyCount(ctx context.Context) (int, error) {
+	return n.storage.CountUserKeys(ctx)
 }

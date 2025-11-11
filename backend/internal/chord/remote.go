@@ -12,6 +12,10 @@ type RemoteClient interface {
 	// FindSuccessor calls the FindSuccessor RPC on a remote node.
 	FindSuccessor(address string, id *big.Int) (*NodeAddress, error)
 
+	// FindSuccessorWithPath calls the FindSuccessorWithPath RPC on a remote node.
+	// Returns the successor and the path taken (list of nodes visited from that node onwards).
+	FindSuccessorWithPath(address string, id *big.Int) (*NodeAddress, []*NodeAddress, error)
+
 	// GetPredecessor calls the GetPredecessor RPC on a remote node.
 	GetPredecessor(address string) (*NodeAddress, error)
 

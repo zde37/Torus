@@ -8,9 +8,10 @@ import { getAPIClient } from '@/lib/api';
 interface DemoOperationsProps {
   nodes: ChordNode[];
   onLookupSimulation?: (key: string) => void;
+  onOperationComplete?: () => void;
 }
 
-export default function DemoOperations({ nodes, onLookupSimulation }: DemoOperationsProps) {
+export default function DemoOperations({ nodes, onLookupSimulation, onOperationComplete }: DemoOperationsProps) {
   const [operation, setOperation] = useState<'get' | 'set' | 'delete'>('get');
   const [key, setKey] = useState('');
   const [value, setValue] = useState('');
@@ -51,6 +52,10 @@ export default function DemoOperations({ nodes, onLookupSimulation }: DemoOperat
       const response = await api.setKey(key, value);
       if (response.success) {
         setResult(`✓ Key stored successfully`);
+        // Refresh node data after successful operation
+        if (onOperationComplete) {
+          onOperationComplete();
+        }
       } else {
         setResult('✗ Failed to store key');
       }
@@ -71,6 +76,10 @@ export default function DemoOperations({ nodes, onLookupSimulation }: DemoOperat
       const response = await api.deleteKey(key);
       if (response.success) {
         setResult(`✓ Key deleted successfully`);
+        // Refresh node data after successful operation
+        if (onOperationComplete) {
+          onOperationComplete();
+        }
       } else {
         setResult('✗ Failed to delete key');
       }

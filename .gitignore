@@ -75,6 +75,7 @@ frontend/.vercel
 
 # TypeScript
 frontend/*.tsbuildinfo
+frontend/package-lock.json
 frontend/next-env.d.ts
 
 #######################

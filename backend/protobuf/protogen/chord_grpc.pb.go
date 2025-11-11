@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	ChordService_FindSuccessor_FullMethodName          = "/protogen.ChordService/FindSuccessor"
+	ChordService_FindSuccessorWithPath_FullMethodName  = "/protogen.ChordService/FindSuccessorWithPath"
 	ChordService_GetPredecessor_FullMethodName         = "/protogen.ChordService/GetPredecessor"
 	ChordService_Notify_FullMethodName                 = "/protogen.ChordService/Notify"
 	ChordService_GetSuccessorList_FullMethodName       = "/protogen.ChordService/GetSuccessorList"
@@ -31,6 +32,8 @@ const (
 	ChordService_Get_FullMethodName                    = "/protogen.ChordService/Get"
 	ChordService_Set_FullMethodName                    = "/protogen.ChordService/Set"
 	ChordService_Delete_FullMethodName                 = "/protogen.ChordService/Delete"
+	ChordService_LookupPath_FullMethodName             = "/protogen.ChordService/LookupPath"
+	ChordService_GetFingerTable_FullMethodName         = "/protogen.ChordService/GetFingerTable"
 )
 
 // ChordServiceClient is the client API for ChordService service.
@@ -42,6 +45,9 @@ type ChordServiceClient interface {
 	// FindSuccessor finds the successor of a given ID.
 	// This is the core Chord lookup operation.
 	FindSuccessor(ctx context.Context, in *FindSuccessorRequest, opts ...grpc.CallOption) (*FindSuccessorResponse, error)
+	// FindSuccessorWithPath finds the successor and returns the routing path.
+	// This is used internally for path tracking between nodes.
+	FindSuccessorWithPath(ctx context.Context, in *FindSuccessorWithPathRequest, opts ...grpc.CallOption) (*FindSuccessorWithPathResponse, error)
 	// GetPredecessor returns the node's predecessor.
 	GetPredecessor(ctx context.Context, in *GetPredecessorRequest, opts ...grpc.CallOption) (*GetPredecessorResponse, error)
 	// Notify informs a node that another node might be its predecessor.
@@ -70,6 +76,12 @@ type ChordServiceClient interface {
 	Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error)
 	// Delete removes a key from the DHT.
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+	// LookupPath finds the node responsible for a key and returns the path taken.
+	// Used for visualization and debugging.
+	LookupPath(ctx context.Context, in *LookupPathRequest, opts ...grpc.CallOption) (*LookupPathResponse, error)
+	// GetFingerTable returns the node's finger table.
+	// Used for visualization.
+	GetFingerTable(ctx context.Context, in *GetFingerTableRequest, opts ...grpc.CallOption) (*GetFingerTableResponse, error)
 }
 
 type chordServiceClient struct {
@@ -84,6 +96,16 @@ func (c *chordServiceClient) FindSuccessor(ctx context.Context, in *FindSuccesso
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FindSuccessorResponse)
 	err := c.cc.Invoke(ctx, ChordService_FindSuccessor_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chordServiceClient) FindSuccessorWithPath(ctx context.Context, in *FindSuccessorWithPathRequest, opts ...grpc.CallOption) (*FindSuccessorWithPathResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FindSuccessorWithPathResponse)
+	err := c.cc.Invoke(ctx, ChordService_FindSuccessorWithPath_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +222,26 @@ func (c *chordServiceClient) Delete(ctx context.Context, in *DeleteRequest, opts
 	return out, nil
 }
 
+func (c *chordServiceClient) LookupPath(ctx context.Context, in *LookupPathRequest, opts ...grpc.CallOption) (*LookupPathResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LookupPathResponse)
+	err := c.cc.Invoke(ctx, ChordService_LookupPath_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chordServiceClient) GetFingerTable(ctx context.Context, in *GetFingerTableRequest, opts ...grpc.CallOption) (*GetFingerTableResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetFingerTableResponse)
+	err := c.cc.Invoke(ctx, ChordService_GetFingerTable_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChordServiceServer is the server API for ChordService service.
 // All implementations must embed UnimplementedChordServiceServer
 // for forward compatibility.
@@ -209,6 +251,9 @@ type ChordServiceServer interface {
 	// FindSuccessor finds the successor of a given ID.
 	// This is the core Chord lookup operation.
 	FindSuccessor(context.Context, *FindSuccessorRequest) (*FindSuccessorResponse, error)
+	// FindSuccessorWithPath finds the successor and returns the routing path.
+	// This is used internally for path tracking between nodes.
+	FindSuccessorWithPath(context.Context, *FindSuccessorWithPathRequest) (*FindSuccessorWithPathResponse, error)
 	// GetPredecessor returns the node's predecessor.
 	GetPredecessor(context.Context, *GetPredecessorRequest) (*GetPredecessorResponse, error)
 	// Notify informs a node that another node might be its predecessor.
@@ -237,6 +282,12 @@ type ChordServiceServer interface {
 	Set(context.Context, *SetRequest) (*SetResponse, error)
 	// Delete removes a key from the DHT.
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
+	// LookupPath finds the node responsible for a key and returns the path taken.
+	// Used for visualization and debugging.
+	LookupPath(context.Context, *LookupPathRequest) (*LookupPathResponse, error)
+	// GetFingerTable returns the node's finger table.
+	// Used for visualization.
+	GetFingerTable(context.Context, *GetFingerTableRequest) (*GetFingerTableResponse, error)
 	mustEmbedUnimplementedChordServiceServer()
 }
 
@@ -249,6 +300,9 @@ type UnimplementedChordServiceServer struct{}
 
 func (UnimplementedChordServiceServer) FindSuccessor(context.Context, *FindSuccessorRequest) (*FindSuccessorResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method FindSuccessor not implemented")
+}
+func (UnimplementedChordServiceServer) FindSuccessorWithPath(context.Context, *FindSuccessorWithPathRequest) (*FindSuccessorWithPathResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FindSuccessorWithPath not implemented")
 }
 func (UnimplementedChordServiceServer) GetPredecessor(context.Context, *GetPredecessorRequest) (*GetPredecessorResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPredecessor not implemented")
@@ -282,6 +336,12 @@ func (UnimplementedChordServiceServer) Set(context.Context, *SetRequest) (*SetRe
 }
 func (UnimplementedChordServiceServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedChordServiceServer) LookupPath(context.Context, *LookupPathRequest) (*LookupPathResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method LookupPath not implemented")
+}
+func (UnimplementedChordServiceServer) GetFingerTable(context.Context, *GetFingerTableRequest) (*GetFingerTableResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetFingerTable not implemented")
 }
 func (UnimplementedChordServiceServer) mustEmbedUnimplementedChordServiceServer() {}
 func (UnimplementedChordServiceServer) testEmbeddedByValue()                      {}
@@ -318,6 +378,24 @@ func _ChordService_FindSuccessor_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ChordServiceServer).FindSuccessor(ctx, req.(*FindSuccessorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChordService_FindSuccessorWithPath_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FindSuccessorWithPathRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).FindSuccessorWithPath(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_FindSuccessorWithPath_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).FindSuccessorWithPath(ctx, req.(*FindSuccessorWithPathRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -520,6 +598,42 @@ func _ChordService_Delete_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChordService_LookupPath_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LookupPathRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).LookupPath(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_LookupPath_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).LookupPath(ctx, req.(*LookupPathRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChordService_GetFingerTable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetFingerTableRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).GetFingerTable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_GetFingerTable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).GetFingerTable(ctx, req.(*GetFingerTableRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChordService_ServiceDesc is the grpc.ServiceDesc for ChordService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -530,6 +644,10 @@ var ChordService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "FindSuccessor",
 			Handler:    _ChordService_FindSuccessor_Handler,
+		},
+		{
+			MethodName: "FindSuccessorWithPath",
+			Handler:    _ChordService_FindSuccessorWithPath_Handler,
 		},
 		{
 			MethodName: "GetPredecessor",
@@ -574,6 +692,14 @@ var ChordService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _ChordService_Delete_Handler,
+		},
+		{
+			MethodName: "LookupPath",
+			Handler:    _ChordService_LookupPath_Handler,
+		},
+		{
+			MethodName: "GetFingerTable",
+			Handler:    _ChordService_GetFingerTable_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

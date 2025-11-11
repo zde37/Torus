@@ -103,24 +103,30 @@ export default function NodeDetailsPanel({ node }: NodeDetailsPanelProps) {
       {node.fingerTable && node.fingerTable.length > 0 && (
         <div className="border-t border-gray-700 pt-4">
           <label className="text-sm text-gray-400 mb-2 block">
-            Finger Table (First 10 entries)
+            Finger Table ({node.fingerTable.length} total, showing diverse samples)
           </label>
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {node.fingerTable.slice(0, 10).map((entry, index) => (
-              <div
-                key={index}
-                className="bg-gray-900 p-2 rounded text-xs"
-              >
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">finger[{index}]</span>
-                  {entry.node && (
-                    <span className="text-white font-mono">
-                      {formatId(entry.node.id)}
-                    </span>
-                  )}
+            {/* Show entries at exponential intervals to see variety */}
+            {[0, 1, 2, 3, 4, 5, 10, 20, 40, 80, 159].map((index) => {
+              if (!node.fingerTable || index >= node.fingerTable.length) return null;
+              const entry = node.fingerTable[index];
+              if (!entry) return null;
+              return (
+                <div
+                  key={index}
+                  className="bg-gray-900 p-2 rounded text-xs"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">finger[{index}]</span>
+                    {entry.node && (
+                      <span className="text-white font-mono">
+                        {formatId(entry.node.id)}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

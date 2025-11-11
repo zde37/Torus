@@ -9,7 +9,7 @@ interface StatisticsDashboardProps {
 }
 
 export default function StatisticsDashboard({ nodes, isConnected }: StatisticsDashboardProps) {
-  const totalKeys = nodes.reduce((sum, node) => sum + (node.keyCount || 0), 0);
+  // const totalKeys = nodes.reduce((sum, node) => sum + (node.keyCount || 0), 0);
 
   // Calculate average hops (simplified estimation)
   const averageHops = nodes.length > 0 ? Math.log2(nodes.length).toFixed(2) : '0';
@@ -36,17 +36,17 @@ export default function StatisticsDashboard({ nodes, isConnected }: StatisticsDa
       color: 'text-purple-400',
       bgColor: 'bg-purple-400/10',
     },
-    {
-      label: 'Total Keys',
-      value: totalKeys.toString(),
-      icon: Zap,
-      color: 'text-yellow-400',
-      bgColor: 'bg-yellow-400/10',
-    },
+    // {
+    //   label: 'Total Keys',
+    //   value: totalKeys.toString(),
+    //   icon: Zap,
+    //   color: 'text-yellow-400',
+    //   bgColor: 'bg-yellow-400/10',
+    // },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {stats.map((stat, index) => (
         <div
           key={index}

@@ -116,6 +116,36 @@ func (s *GRPCServer) FindSuccessor(ctx context.Context, req *pb.FindSuccessorReq
 	}, nil
 }
 
+// FindSuccessorWithPath implements the FindSuccessorWithPath RPC.
+// This is used for recursive path tracking between nodes.
+func (s *GRPCServer) FindSuccessorWithPath(ctx context.Context, req *pb.FindSuccessorWithPathRequest) (*pb.FindSuccessorWithPathResponse, error) {
+	s.logger.Debug().Msg("FindSuccessorWithPath called")
+
+	if len(req.Id) == 0 {
+		return nil, fmt.Errorf("id cannot be empty")
+	}
+
+	// Convert bytes to big.Int
+	id := new(big.Int).SetBytes(req.Id)
+
+	// Find successor with path
+	successor, path, err := s.node.FindSuccessorWithPath(id)
+	if err != nil {
+		return nil, fmt.Errorf("find successor with path failed: %w", err)
+	}
+
+	// Convert path to protobuf
+	pbPath := make([]*pb.Node, len(path))
+	for i, node := range path {
+		pbPath[i] = nodeAddressToProto(node)
+	}
+
+	return &pb.FindSuccessorWithPathResponse{
+		Successor: nodeAddressToProto(successor),
+		Path:      pbPath,
+	}, nil
+}
+
 // GetPredecessor implements the GetPredecessor RPC.
 func (s *GRPCServer) GetPredecessor(ctx context.Context, req *pb.GetPredecessorRequest) (*pb.GetPredecessorResponse, error) {
 	s.logger.Debug().Msg("GetPredecessor called")
@@ -177,8 +207,18 @@ func (s *GRPCServer) GetNodeInfo(ctx context.Context, req *pb.GetNodeInfoRequest
 
 	nodeAddr := s.node.Address()
 
+	// Get key count (user keys only, excluding Chord metadata)
+	keyCount, err := s.node.GetKeyCount(ctx)
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("Failed to get key count")
+		keyCount = 0 // Default to 0 on error
+	}
+
+	nodeProto := nodeAddressToProto(nodeAddr)
+	nodeProto.KeyCount = int32(keyCount)
+
 	return &pb.GetNodeInfoResponse{
-		Node: nodeAddressToProto(nodeAddr),
+		Node: nodeProto,
 	}, nil
 }
 
@@ -327,6 +367,59 @@ func (s *GRPCServer) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.Del
 
 	return &pb.DeleteResponse{
 		Success: true,
+	}, nil
+}
+
+// LookupPath implements the LookupPath RPC.
+func (s *GRPCServer) LookupPath(ctx context.Context, req *pb.LookupPathRequest) (*pb.LookupPathResponse, error) {
+	s.logger.Debug().Str("key", req.Key).Msg("LookupPath called")
+
+	if req.Key == "" {
+		return nil, fmt.Errorf("key cannot be empty")
+	}
+
+	// Hash the key
+	keyHash := s.node.HashKey(req.Key)
+
+	// Find successor with path tracking
+	responsibleNode, path, err := s.node.FindSuccessorWithPath(keyHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find successor with path: %w", err)
+	}
+
+	// Convert path to protobuf
+	pbPath := make([]*pb.Node, len(path))
+	for i, node := range path {
+		pbPath[i] = nodeAddressToProto(node)
+	}
+
+	return &pb.LookupPathResponse{
+		Key:             req.Key,
+		KeyHash:         keyHash.Bytes(),
+		ResponsibleNode: nodeAddressToProto(responsibleNode),
+		Path:            pbPath,
+		Hops:            int32(len(path) - 1), // Hops = path length - 1
+	}, nil
+}
+
+// GetFingerTable implements the GetFingerTable RPC.
+func (s *GRPCServer) GetFingerTable(ctx context.Context, req *pb.GetFingerTableRequest) (*pb.GetFingerTableResponse, error) {
+	s.logger.Debug().Msg("GetFingerTable called")
+
+	fingerTable := s.node.GetFingerTable()
+
+	// Convert to protobuf
+	pbEntries := make([]*pb.FingerTableEntry, len(fingerTable))
+	for i, entry := range fingerTable {
+		pbEntries[i] = &pb.FingerTableEntry{
+			Start: entry.Start.Bytes(),
+			Node:  nodeAddressToProto(entry.Node),
+			Index: int32(i),
+		}
+	}
+
+	return &pb.GetFingerTableResponse{
+		Entries: pbEntries,
 	}, nil
 }
 

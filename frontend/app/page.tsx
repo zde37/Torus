@@ -14,6 +14,8 @@ export default function Home() {
   const [selectedNode, setSelectedNode] = useState<ChordNode | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<string>('');
+  const [lookupPath, setLookupPath] = useState<ChordNode[] | null>(null);
+  const [lookupResponsibleNode, setLookupResponsibleNode] = useState<ChordNode | null>(null);
 
   useEffect(() => {
     const wsClient = getWebSocketClient();
@@ -27,7 +29,8 @@ export default function Home() {
 
         if (allNodes.length > 0) {
           setNodes(allNodes);
-          setSelectedNode(allNodes[0]); // Auto-select the first node
+          // Fetch full details for the first node
+          await handleNodeClick(allNodes[0]);
           console.log(`Discovered ${allNodes.length} nodes in the ring`);
         } else {
           setError('No nodes found in the ring');
@@ -71,13 +74,74 @@ export default function Home() {
     };
   }, []);
 
-  const handleNodeClick = (node: ChordNode) => {
-    setSelectedNode(node);
+  const handleNodeClick = async (node: ChordNode) => {
+    // Clear any ongoing lookup animation
+    setLookupPath(null);
+    setLookupResponsibleNode(null);
+
+    // Fetch additional data for the selected node
+    try {
+      const nodeAPI = new (await import('@/lib/api')).TorusAPI(
+        `http://${node.host}:${node.httpPort || node.port}`
+      );
+
+      // Fetch node info, successors, finger table and predecessor in parallel
+      const [freshNodeInfo, successors, fingerTable, predecessor] = await Promise.all([
+        nodeAPI.getNodeInfo(), // Get fresh node info with updated keyCount
+        nodeAPI.getSuccessors(), // Get successor list
+        nodeAPI.getFingerTable(),
+        nodeAPI.getPredecessor().catch(() => null) // Handle failure gracefully
+      ]);
+
+      // Update the node with fresh data in a single setState
+      const enrichedNode = {
+        ...freshNodeInfo, // Use fresh node info (includes updated keyCount)
+        successor: successors && successors.length > 0 ? successors[0] : undefined,
+        predecessor: predecessor || undefined,
+        fingerTable: fingerTable.map((entry) => ({
+          start: entry.start,
+          node: entry.node,
+        })),
+      };
+
+      setSelectedNode(enrichedNode);
+    } catch (error) {
+      console.error('Failed to fetch node details:', error);
+      // Set node even if fetch fails
+      setSelectedNode(node);
+    }
   };
 
-  const handleLookupSimulation = (key: string) => {
-    // TODO: Implement lookup path visualization
-    console.log('Simulating lookup for key:', key);
+  const handleLookupSimulation = async (key: string) => {
+    try {
+      const apiClient = getAPIClient();
+      const result = await apiClient.lookupPath(key);
+
+      console.log(`Lookup path for "${key}":`, result);
+      console.log(`- Hops: ${result.hops ?? 0}`); // Default to 0 if undefined (found on first node)
+      console.log(`- Responsible node: ${result.responsibleNode.host}:${result.responsibleNode.httpPort}`);
+
+      // Set the path and responsible node for visualization
+      setLookupPath(result.path);
+      setLookupResponsibleNode(result.responsibleNode);
+
+      // Clear the path after animation completes (5 seconds)
+      setTimeout(() => {
+        setLookupPath(null);
+        setLookupResponsibleNode(null);
+      }, 5000);
+    } catch (error) {
+      console.error('Failed to get lookup path:', error);
+      setError('Failed to perform lookup path visualization');
+      setTimeout(() => setError(''), 3000);
+    }
+  };
+
+  const handleOperationComplete = async () => {
+    // Refresh the selected node to get updated keyCount
+    if (selectedNode) {
+      await handleNodeClick(selectedNode);
+    }
   };
 
   return (
@@ -117,6 +181,8 @@ export default function Home() {
                 nodes={nodes}
                 onNodeClick={handleNodeClick}
                 selectedNode={selectedNode}
+                lookupPath={lookupPath}
+                lookupResponsibleNode={lookupResponsibleNode}
               />
             ) : (
               <div className="flex items-center justify-center h-[700px] text-gray-400">
@@ -136,6 +202,7 @@ export default function Home() {
             <DemoOperations
               nodes={nodes}
               onLookupSimulation={handleLookupSimulation}
+              onOperationComplete={handleOperationComplete}
             />
           </div>
         </div>

@@ -27,6 +27,15 @@ export class TorusAPI {
     return data.successors || [];
   }
 
+  async getPredecessor(): Promise<ChordNode | null> {
+    const response = await fetch(`${this.baseURL}/api/node/predecessor`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch predecessor: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.predecessor || null;
+  }
+
   async ping(): Promise<{ message: string; timestamp: string }> {
     const response = await fetch(`${this.baseURL}/api/node/ping`);
     if (!response.ok) {
@@ -79,6 +88,29 @@ export class TorusAPI {
       throw new Error(`Health check failed: ${response.statusText}`);
     }
     return await response.json();
+  }
+
+  async lookupPath(key: string): Promise<{
+    key: string;
+    keyHash: string;
+    responsibleNode: ChordNode;
+    path: ChordNode[];
+    hops: number
+  }> {
+    const response = await fetch(`${this.baseURL}/api/lookup/${encodeURIComponent(key)}`);
+    if (!response.ok) {
+      throw new Error(`Failed to lookup path: ${response.statusText}`);
+    }
+    return await response.json();
+  }
+
+  async getFingerTable(): Promise<{ start: string; node: ChordNode; index?: number }[]> {
+    const response = await fetch(`${this.baseURL}/api/node/fingers`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch finger table: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.entries || [];
   }
 
   async discoverRing(): Promise<ChordNode[]> {

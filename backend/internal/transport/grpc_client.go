@@ -104,6 +104,36 @@ func (c *GRPCClient) FindSuccessor(address string, id *big.Int) (*chord.NodeAddr
 	return protoToNodeAddress(resp.Successor), nil
 }
 
+// FindSuccessorWithPath calls the FindSuccessorWithPath RPC on a remote node.
+// This is used for recursive path tracking - the remote node returns its routing path.
+func (c *GRPCClient) FindSuccessorWithPath(address string, id *big.Int) (*chord.NodeAddress, []*chord.NodeAddress, error) {
+	conn, err := c.getConnection(address)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	client := pb.NewChordServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	req := &pb.FindSuccessorWithPathRequest{
+		Id: id.Bytes(),
+	}
+
+	resp, err := client.FindSuccessorWithPath(ctx, req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("FindSuccessorWithPath RPC failed: %w", err)
+	}
+
+	// Convert path from protobuf
+	path := make([]*chord.NodeAddress, len(resp.Path))
+	for i, node := range resp.Path {
+		path[i] = protoToNodeAddress(node)
+	}
+
+	return protoToNodeAddress(resp.Successor), path, nil
+}
+
 // GetPredecessor calls the GetPredecessor RPC on a remote node.
 func (c *GRPCClient) GetPredecessor(address string) (*chord.NodeAddress, error) {
 	conn, err := c.getConnection(address)

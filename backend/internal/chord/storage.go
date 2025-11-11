@@ -263,6 +263,26 @@ func (cs *ChordStorage) GetStats() pkg.Stats {
 	return cs.storage.GetStats()
 }
 
+// CountUserKeys returns the number of user keys (excluding Chord metadata).
+// Chord metadata keys are prefixed with "__chord_" and should not be counted.
+func (cs *ChordStorage) CountUserKeys(ctx context.Context) (int, error) {
+	allKeys, err := cs.storage.GetAll(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	userKeyCount := 0
+	for key := range allKeys {
+		// Skip Chord metadata keys
+		if len(key) >= 8 && key[:8] == "__chord_" {
+			continue
+		}
+		userKeyCount++
+	}
+
+	return userKeyCount, nil
+}
+
 // hashKey converts a string key to a hex string representation of its Chord ID.
 // This ensures consistent hashing across the system.
 func (cs *ChordStorage) hashKey(key string) string {
