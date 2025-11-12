@@ -57,6 +57,32 @@ func (cs *ChordStorage) Delete(ctx context.Context, key string) error {
 	return cs.storage.Delete(ctx, hashedKey)
 }
 
+// SetReplica stores a replica of a key with the given value and TTL.
+// Replicas are stored with a special prefix to distinguish them from primary keys.
+func (cs *ChordStorage) SetReplica(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	replicaKey := cs.makeReplicaKey(key)
+	return cs.storage.Set(ctx, replicaKey, value, ttl)
+}
+
+// GetReplica retrieves a replica value by key.
+// Returns the value if found, nil if not found, and error on failures.
+func (cs *ChordStorage) GetReplica(ctx context.Context, key string) ([]byte, error) {
+	replicaKey := cs.makeReplicaKey(key)
+	return cs.storage.Get(ctx, replicaKey)
+}
+
+// DeleteReplica removes a replica of a key.
+func (cs *ChordStorage) DeleteReplica(ctx context.Context, key string) error {
+	replicaKey := cs.makeReplicaKey(key)
+	return cs.storage.Delete(ctx, replicaKey)
+}
+
+// makeReplicaKey creates a replica key by prefixing the hashed key with "__replica_".
+func (cs *ChordStorage) makeReplicaKey(key string) string {
+	hashedKey := cs.hashKey(key)
+	return "__replica_" + hashedKey
+}
+
 // GetRaw retrieves a value by raw key (without hashing).
 // This is useful for internal metadata storage.
 func (cs *ChordStorage) GetRaw(ctx context.Context, key string) ([]byte, error) {

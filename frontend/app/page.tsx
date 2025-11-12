@@ -8,6 +8,14 @@ import DemoOperations from '@/components/DemoOperations';
 import { ChordNode } from '@/types/chord';
 import { getWebSocketClient } from '@/lib/websocket';
 import { getAPIClient } from '@/lib/api';
+import {
+  WS_EVENT_CONNECTED,
+  WS_EVENT_DISCONNECTED,
+  WS_EVENT_ERROR,
+  EVENT_NODE_JOIN,
+  EVENT_NODE_LEAVE,
+  EVENT_STABILIZATION,
+} from '@/lib/constants';
 
 export default function Home() {
   const [nodes, setNodes] = useState<ChordNode[]>([]);
@@ -49,30 +57,74 @@ export default function Home() {
     });
 
     // WebSocket event handlers
-    wsClient.on('connected', () => {
+    wsClient.on(WS_EVENT_CONNECTED, () => {
       setIsConnected(true);
       setError('');
     });
 
-    wsClient.on('disconnected', () => {
+    wsClient.on(WS_EVENT_DISCONNECTED, () => {
       setIsConnected(false);
     });
 
-    wsClient.on('error', () => {
+    wsClient.on(WS_EVENT_ERROR, () => {
       setError('WebSocket connection error');
     });
 
-    wsClient.on('ring_update', (data: any) => {
-      if (data.nodes && Array.isArray(data.nodes)) {
-        setNodes(data.nodes);
+    // Handler for all ring update events
+    const handleRingUpdate = async (data: any) => {
+      console.log('Ring update received:', data);
+      try {
+        // Fetch updated node list from the ring
+        const updatedNodes = await apiClient.discoverRing();
+        setNodes(updatedNodes);
+
+        // Re-validate selected node - if it no longer exists, clear selection
+        if (selectedNode && !updatedNodes.find(n => n.id === selectedNode.id)) {
+          setSelectedNode(null);
+          console.log('Selected node no longer in ring, clearing selection');
+        }
+      } catch (error) {
+        console.error('Failed to update nodes after ring_update:', error);
       }
-    });
+    };
+
+    // Listen for all ring update event types
+    wsClient.on(EVENT_NODE_JOIN, handleRingUpdate);
+    wsClient.on(EVENT_NODE_LEAVE, handleRingUpdate);
+    wsClient.on(EVENT_STABILIZATION, handleRingUpdate);
 
     // Cleanup
     return () => {
       wsClient.disconnect();
     };
   }, []);
+
+  // Polling fallback - only poll when WebSocket is disconnected
+  useEffect(() => {
+    if (!isConnected) {
+      console.log('WebSocket disconnected, starting polling fallback');
+      const apiClient = getAPIClient();
+
+      const pollingInterval = setInterval(async () => {
+        try {
+          const updatedNodes = await apiClient.discoverRing();
+          setNodes(updatedNodes);
+
+          // Re-validate selected node
+          if (selectedNode && !updatedNodes.find(n => n.id === selectedNode.id)) {
+            setSelectedNode(null);
+          }
+        } catch (error) {
+          console.error('Polling failed:', error);
+        }
+      }, 5000); // Poll every 5 seconds when disconnected
+
+      return () => {
+        console.log('WebSocket reconnected, stopping polling fallback');
+        clearInterval(pollingInterval);
+      };
+    }
+  }, [isConnected, selectedNode]);
 
   const handleNodeClick = async (node: ChordNode) => {
     // Clear any ongoing lookup animation
@@ -97,6 +149,7 @@ export default function Home() {
       const enrichedNode = {
         ...freshNodeInfo, // Use fresh node info (includes updated keyCount)
         successor: successors && successors.length > 0 ? successors[0] : undefined,
+        successors: successors || [], // Full successor list
         predecessor: predecessor || undefined,
         fingerTable: fingerTable.map((entry) => ({
           start: entry.start,

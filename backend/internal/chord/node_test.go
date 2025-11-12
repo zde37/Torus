@@ -198,6 +198,18 @@ func (m *mockRemoteClient) DeleteTransferredKeys(ctx context.Context, address st
 	return nil
 }
 
+func (m *mockRemoteClient) SetReplica(ctx context.Context, address string, key string, value []byte, ttl time.Duration) error {
+	return nil
+}
+
+func (m *mockRemoteClient) GetReplica(ctx context.Context, address string, key string) ([]byte, bool, error) {
+	return nil, false, nil
+}
+
+func (m *mockRemoteClient) DeleteReplica(ctx context.Context, address string, key string) error {
+	return nil
+}
+
 func TestChordNode_Join(t *testing.T) {
 	bootstrap := createTestNode(t, "127.0.0.1", 8080)
 	defer bootstrap.Shutdown()
@@ -617,6 +629,282 @@ func TestChordNode_ConcurrentAccess(t *testing.T) {
 }
 
 // Benchmark tests
+func TestChordNode_UpdateSuccessorList(t *testing.T) {
+	node := createTestNode(t, "127.0.0.1", 8080)
+	defer node.Shutdown()
+
+	err := node.Create()
+	require.NoError(t, err)
+
+	t.Run("update with self as successor", func(t *testing.T) {
+		// Initially node points to self
+		err := node.updateSuccessorList()
+		assert.NoError(t, err)
+
+		// Successor list should contain only self
+		succList := node.getSuccessorList()
+		assert.Len(t, succList, 1)
+		assert.True(t, succList[0].Equals(node.Address()))
+	})
+
+	t.Run("update with nil successor", func(t *testing.T) {
+		node.setSuccessor(nil)
+		err := node.updateSuccessorList()
+		assert.NoError(t, err) // Should handle gracefully
+	})
+
+	t.Run("update with no remote client", func(t *testing.T) {
+		// Create a successor node
+		succ := NewNodeAddress(
+			big.NewInt(100),
+			"127.0.0.1",
+			8081,
+			8081,
+		)
+		node.setSuccessor(succ)
+
+		// Without remote client, update should return early
+		node.SetRemote(nil)
+		err := node.updateSuccessorList()
+		assert.NoError(t, err)
+	})
+
+	t.Run("update merges successor's list", func(t *testing.T) {
+		// Create mock successor nodes
+		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 8081, 8081)
+		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 8082, 8082)
+		succ3 := NewNodeAddress(big.NewInt(300), "127.0.0.1", 8083, 8083)
+
+		// Set up mock remote client that returns successor list
+		mockRemote := &mockRemoteClientWithSuccessors{
+			successorList: []*NodeAddress{succ2, succ3},
+		}
+		node.SetRemote(mockRemote)
+
+		// Set first successor
+		node.setSuccessor(succ1)
+
+		// Update successor list
+		err := node.updateSuccessorList()
+		assert.NoError(t, err)
+
+		// Should have merged list: [succ1, succ2, succ3]
+		succList := node.getSuccessorList()
+		assert.GreaterOrEqual(t, len(succList), 1)
+		assert.True(t, succList[0].Equals(succ1), "First successor should be succ1")
+	})
+
+	t.Run("update removes duplicates", func(t *testing.T) {
+		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 8081, 8081)
+
+		// Mock returns list with duplicate
+		mockRemote := &mockRemoteClientWithSuccessors{
+			successorList: []*NodeAddress{succ1, succ1},
+		}
+		node.SetRemote(mockRemote)
+
+		node.setSuccessor(succ1)
+		err := node.updateSuccessorList()
+		assert.NoError(t, err)
+
+		// Should have no duplicates
+		succList := node.getSuccessorList()
+		assert.Len(t, succList, 1)
+	})
+
+	t.Run("update respects max size", func(t *testing.T) {
+		// Create more successors than SuccessorListSize (8)
+		successors := make([]*NodeAddress, 12)
+		for i := 0; i < 12; i++ {
+			successors[i] = NewNodeAddress(
+				big.NewInt(int64(100 + i*10)),
+				"127.0.0.1",
+				8081+i,
+				8081+i,
+			)
+		}
+
+		mockRemote := &mockRemoteClientWithSuccessors{
+			successorList: successors[1:], // All except first
+		}
+		node.SetRemote(mockRemote)
+
+		node.setSuccessor(successors[0])
+		err := node.updateSuccessorList()
+		assert.NoError(t, err)
+
+		// Should not exceed SuccessorListSize
+		succList := node.getSuccessorList()
+		assert.LessOrEqual(t, len(succList), node.config.SuccessorListSize)
+	})
+
+	t.Run("update filters out self", func(t *testing.T) {
+		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 8081, 8081)
+
+		// Mock returns list that includes node itself
+		mockRemote := &mockRemoteClientWithSuccessors{
+			successorList: []*NodeAddress{succ1, node.Address()},
+		}
+		node.SetRemote(mockRemote)
+
+		node.setSuccessor(succ1)
+		err := node.updateSuccessorList()
+		assert.NoError(t, err)
+
+		// Self should be filtered out
+		succList := node.getSuccessorList()
+		for _, s := range succList {
+			assert.False(t, s.Equals(node.Address()), "Successor list should not contain self")
+		}
+	})
+}
+
+func TestChordNode_FindFirstAliveSuccessor(t *testing.T) {
+	node := createTestNode(t, "127.0.0.1", 8080)
+	defer node.Shutdown()
+
+	err := node.Create()
+	require.NoError(t, err)
+
+	t.Run("with empty successor list", func(t *testing.T) {
+		node.setSuccessorList([]*NodeAddress{})
+		result := node.findFirstAliveSuccessor()
+		assert.Nil(t, result)
+	})
+
+	t.Run("with only self in list", func(t *testing.T) {
+		node.setSuccessorList([]*NodeAddress{node.Address()})
+
+		// Set mock remote client so it goes through ping logic
+		mockRemote := &mockRemoteClientWithPing{
+			aliveAddresses: map[string]bool{
+				node.Address().Address(): true,
+			},
+		}
+		node.SetRemote(mockRemote)
+
+		result := node.findFirstAliveSuccessor()
+		assert.Nil(t, result) // Should skip self
+	})
+
+	t.Run("without remote client returns first", func(t *testing.T) {
+		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 8081, 8081)
+		node.setSuccessorList([]*NodeAddress{succ1})
+		node.SetRemote(nil)
+
+		result := node.findFirstAliveSuccessor()
+		assert.NotNil(t, result)
+		assert.True(t, result.Equals(succ1))
+	})
+
+	t.Run("finds first alive successor", func(t *testing.T) {
+		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 8081, 8081)
+		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 8082, 8082)
+		succ3 := NewNodeAddress(big.NewInt(300), "127.0.0.1", 8083, 8083)
+
+		node.setSuccessorList([]*NodeAddress{succ1, succ2, succ3})
+
+		// Mock that first two fail, third succeeds
+		mockRemote := &mockRemoteClientWithPing{
+			aliveAddresses: map[string]bool{
+				succ1.Address(): false,
+				succ2.Address(): false,
+				succ3.Address(): true,
+			},
+		}
+		node.SetRemote(mockRemote)
+
+		result := node.findFirstAliveSuccessor()
+		assert.NotNil(t, result)
+		assert.True(t, result.Equals(succ3), "Should return third successor")
+	})
+
+	t.Run("returns nil when no alive successors", func(t *testing.T) {
+		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 8081, 8081)
+		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 8082, 8082)
+
+		node.setSuccessorList([]*NodeAddress{succ1, succ2})
+
+		// Mock where all fail
+		mockRemote := &mockRemoteClientWithPing{
+			aliveAddresses: map[string]bool{
+				succ1.Address(): false,
+				succ2.Address(): false,
+			},
+		}
+		node.SetRemote(mockRemote)
+
+		result := node.findFirstAliveSuccessor()
+		assert.Nil(t, result)
+	})
+
+	t.Run("returns first alive when all alive", func(t *testing.T) {
+		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 8081, 8081)
+		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 8082, 8082)
+
+		node.setSuccessorList([]*NodeAddress{succ1, succ2})
+
+		// Mock where all are alive
+		mockRemote := &mockRemoteClientWithPing{
+			aliveAddresses: map[string]bool{
+				succ1.Address(): true,
+				succ2.Address(): true,
+			},
+		}
+		node.SetRemote(mockRemote)
+
+		result := node.findFirstAliveSuccessor()
+		assert.NotNil(t, result)
+		assert.True(t, result.Equals(succ1), "Should return first alive successor")
+	})
+
+	t.Run("skips nil entries in list", func(t *testing.T) {
+		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 8082, 8082)
+
+		// Create list with nil entry
+		node.successorMu.Lock()
+		node.successorList = []*NodeAddress{nil, succ2}
+		node.successorMu.Unlock()
+
+		mockRemote := &mockRemoteClientWithPing{
+			aliveAddresses: map[string]bool{
+				succ2.Address(): true,
+			},
+		}
+		node.SetRemote(mockRemote)
+
+		result := node.findFirstAliveSuccessor()
+		assert.NotNil(t, result)
+		assert.True(t, result.Equals(succ2))
+	})
+}
+
+// mockRemoteClientWithSuccessors extends mockRemoteClient with successor list support
+type mockRemoteClientWithSuccessors struct {
+	mockRemoteClient
+	successorList []*NodeAddress
+}
+
+func (m *mockRemoteClientWithSuccessors) GetSuccessorList(address string) ([]*NodeAddress, error) {
+	// Return a copy of the successor list
+	result := make([]*NodeAddress, len(m.successorList))
+	copy(result, m.successorList)
+	return result, nil
+}
+
+// mockRemoteClientWithPing extends mockRemoteClient with configurable Ping responses
+type mockRemoteClientWithPing struct {
+	mockRemoteClient
+	aliveAddresses map[string]bool
+}
+
+func (m *mockRemoteClientWithPing) Ping(address string, message string) (string, error) {
+	if m.aliveAddresses[address] {
+		return "pong", nil
+	}
+	return "", assert.AnError
+}
+
 func BenchmarkChordNode_FindSuccessor(b *testing.B) {
 	cfg := config.DefaultConfig()
 	cfg.Host = "127.0.0.1"

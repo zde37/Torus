@@ -16,7 +16,7 @@ func TestNewGRPCClient(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 
 	assert.NotNil(t, client)
 	assert.NotNil(t, client.logger)
@@ -27,7 +27,7 @@ func TestNewGRPCClient(t *testing.T) {
 
 func TestNewGRPCClient_NilLogger(t *testing.T) {
 	// Should create default logger if nil
-	client := NewGRPCClient(nil, 5*time.Second)
+	client := NewGRPCClient(nil, TEST_AUTH_TOKEN, 5*time.Second)
 
 	assert.NotNil(t, client)
 	assert.NotNil(t, client.logger)
@@ -41,7 +41,7 @@ func TestGRPCClient_FindSuccessor(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9200", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9200", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	err = server.Start()
@@ -52,7 +52,7 @@ func TestGRPCClient_FindSuccessor(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 	defer client.Close()
 
 	// Test successful call
@@ -69,7 +69,7 @@ func TestGRPCClient_FindSuccessor_InvalidAddress(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	client := NewGRPCClient(logger, 1*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 1*time.Second)
 	defer client.Close()
 
 	// Test with invalid address
@@ -87,7 +87,7 @@ func TestGRPCClient_GetPredecessor(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9210", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9210", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	err = server.Start()
@@ -97,7 +97,7 @@ func TestGRPCClient_GetPredecessor(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 	defer client.Close()
 
 	// Initially, predecessor should be nil
@@ -124,7 +124,7 @@ func TestGRPCClient_Notify(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9220", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9220", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	err = server.Start()
@@ -134,7 +134,7 @@ func TestGRPCClient_Notify(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 	defer client.Close()
 
 	// Send notification
@@ -157,7 +157,7 @@ func TestGRPCClient_GetSuccessorList(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9230", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9230", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	err = server.Start()
@@ -167,7 +167,7 @@ func TestGRPCClient_GetSuccessorList(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 	defer client.Close()
 
 	// Get successor list
@@ -187,7 +187,7 @@ func TestGRPCClient_Ping(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9240", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9240", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	err = server.Start()
@@ -197,7 +197,7 @@ func TestGRPCClient_Ping(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 	defer client.Close()
 
 	// Send ping
@@ -215,7 +215,7 @@ func TestGRPCClient_ClosestPrecedingFinger(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9250", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9250", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	err = server.Start()
@@ -225,7 +225,7 @@ func TestGRPCClient_ClosestPrecedingFinger(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 	defer client.Close()
 
 	// Get closest preceding finger
@@ -246,7 +246,7 @@ func TestGRPCClient_ConnectionPooling(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9260", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9260", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	err = server.Start()
@@ -256,7 +256,7 @@ func TestGRPCClient_ConnectionPooling(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 	defer client.Close()
 
 	// Make multiple calls to same address
@@ -282,13 +282,13 @@ func TestGRPCClient_MultipleConnections(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server1, err := NewGRPCServer(node1, "127.0.0.1:9270", logger)
+	server1, err := NewGRPCServer(node1, "127.0.0.1:9270", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 	err = server1.Start()
 	require.NoError(t, err)
 	defer server1.Stop()
 
-	server2, err := NewGRPCServer(node2, "127.0.0.1:9271", logger)
+	server2, err := NewGRPCServer(node2, "127.0.0.1:9271", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 	err = server2.Start()
 	require.NoError(t, err)
@@ -297,7 +297,7 @@ func TestGRPCClient_MultipleConnections(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 	defer client.Close()
 
 	// Connect to both servers
@@ -324,13 +324,13 @@ func TestGRPCClient_Close(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server1, err := NewGRPCServer(node1, "127.0.0.1:9280", logger)
+	server1, err := NewGRPCServer(node1, "127.0.0.1:9280", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 	err = server1.Start()
 	require.NoError(t, err)
 	defer server1.Stop()
 
-	server2, err := NewGRPCServer(node2, "127.0.0.1:9281", logger)
+	server2, err := NewGRPCServer(node2, "127.0.0.1:9281", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 	err = server2.Start()
 	require.NoError(t, err)
@@ -339,7 +339,7 @@ func TestGRPCClient_Close(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client and establish connections
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 
 	_, err = client.Ping("127.0.0.1:9280", "test1")
 	assert.NoError(t, err)
@@ -367,7 +367,7 @@ func TestGRPCClient_Timeout(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create client with very short timeout
-	client := NewGRPCClient(logger, 100*time.Millisecond)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 100*time.Millisecond)
 	defer client.Close()
 
 	// Try to connect to non-existent server
@@ -386,7 +386,7 @@ func TestGRPCClient_ConcurrentCalls(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9290", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9290", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	err = server.Start()
@@ -396,7 +396,7 @@ func TestGRPCClient_ConcurrentCalls(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create client
-	client := NewGRPCClient(logger, 5*time.Second)
+	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
 	defer client.Close()
 
 	// Make concurrent calls

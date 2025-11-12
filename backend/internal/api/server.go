@@ -9,8 +9,10 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
 
+	"github.com/zde37/torus/internal/transport"
 	"github.com/zde37/torus/pkg"
 	pb "github.com/zde37/torus/protobuf/protogen"
 )
@@ -21,14 +23,16 @@ type Server struct {
 	wsHub      *WebSocketHub
 	logger     *pkg.Logger
 	grpcAddr   string
+	authToken  string
 	ctx        context.Context
 	cancel     context.CancelFunc
 }
 
 // Config holds the HTTP server configuration.
 type Config struct {
-	HTTPPort int
-	GRPCAddr string
+	HTTPPort  int
+	GRPCAddr  string
+	AuthToken string
 }
 
 // NewServer creates a new HTTP API gateway server.
@@ -40,9 +44,10 @@ func NewServer(cfg *Config, logger *pkg.Logger) (*Server, error) {
 	wsHub := NewWebSocketHub(logger)
 
 	return &Server{
-		logger:   logger.WithFields(pkg.Fields{"component": "http_api"}),
-		grpcAddr: cfg.GRPCAddr,
-		wsHub:    wsHub,
+		logger:    logger.WithFields(pkg.Fields{"component": "http_api"}),
+		grpcAddr:  cfg.GRPCAddr,
+		authToken: cfg.AuthToken,
+		wsHub:     wsHub,
 	}, nil
 }
 
@@ -61,7 +66,14 @@ func (s *Server) Start(port int) error {
 	)
 
 	// Setup dial options for connecting to gRPC server
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	}
+
+	// Add auth interceptor if auth token is configured
+	if s.authToken != "" {
+		opts = append(opts, grpc.WithUnaryInterceptor(s.authUnaryInterceptor()))
+	}
 
 	// Register ChordService handler
 	err := pb.RegisterChordServiceHandlerFromEndpoint(s.ctx, mux, s.grpcAddr, opts)
@@ -108,6 +120,11 @@ func (s *Server) Start(port int) error {
 
 	s.logger.Info().Int("port", port).Msg("HTTP API server started")
 	return nil
+}
+
+// GetWebSocketHub returns the WebSocket hub for broadcasting updates.
+func (s *Server) GetWebSocketHub() *WebSocketHub {
+	return s.wsHub
 }
 
 // Stop gracefully stops the HTTP server.
@@ -159,4 +176,23 @@ func corsMiddleware(h http.Handler) http.Handler {
 
 		h.ServeHTTP(w, r)
 	})
+}
+
+// authUnaryInterceptor creates a gRPC client interceptor that adds auth token to outgoing requests.
+func (s *Server) authUnaryInterceptor() grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		// Add auth token to metadata
+		md := metadata.Pairs(transport.AuthTokenHeader, s.authToken)
+		ctx = metadata.NewOutgoingContext(ctx, md)
+
+		// Invoke the RPC method
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
 }

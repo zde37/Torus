@@ -156,6 +156,51 @@ message DeleteResponse {
   bool success = 1;
 }
 
+// SetReplicaRequest stores a replica of a key on a successor node.
+message SetReplicaRequest {
+  // The key to replicate
+  string key = 1;
+
+  // The value to replicate
+  bytes value = 2;
+
+  // TTL in seconds (0 = no expiration)
+  int64 ttl_seconds = 3;
+}
+
+// SetReplicaResponse acknowledges the replica storage.
+message SetReplicaResponse {
+  // Success indicator
+  bool success = 1;
+}
+
+// GetReplicaRequest retrieves a replica of a key.
+message GetReplicaRequest {
+  // The key to retrieve
+  string key = 1;
+}
+
+// GetReplicaResponse contains the replica value.
+message GetReplicaResponse {
+  // The value (empty if not found)
+  bytes value = 1;
+
+  // Whether the replica was found
+  bool found = 2;
+}
+
+// DeleteReplicaRequest removes a replica of a key.
+message DeleteReplicaRequest {
+  // The key to delete
+  string key = 1;
+}
+
+// DeleteReplicaResponse acknowledges the replica deletion.
+message DeleteReplicaResponse {
+  // Success indicator
+  bool success = 1;
+}
+
 // ClosestPrecedingFingerRequest asks for the closest preceding finger.
 message ClosestPrecedingFingerRequest {
   // The ID to find the closest preceding finger for
@@ -356,4 +401,16 @@ service ChordService {
       get: "/api/node/fingers"
     };
   }
+
+  // SetReplica stores a replica of a key on a successor node.
+  // Used for data replication to provide fault tolerance.
+  rpc SetReplica(SetReplicaRequest) returns (SetReplicaResponse);
+
+  // GetReplica retrieves a replica of a key.
+  // Used as fallback when primary node fails.
+  rpc GetReplica(GetReplicaRequest) returns (GetReplicaResponse);
+
+  // DeleteReplica removes a replica of a key.
+  // Used to maintain consistency when deleting keys.
+  rpc DeleteReplica(DeleteReplicaRequest) returns (DeleteReplicaResponse);
 }

@@ -20,7 +20,9 @@ func main() {
 	host := flag.String("host", "127.0.0.1", "Host address to bind to")
 	port := flag.Int("port", 8440, "Port for Chord gRPC server")
 	httpPort := flag.Int("http-port", 8080, "Port for HTTP API server")
-	bootstrap := flag.String("bootstrap", "", "Bootstrap node address (host:port) to join existing ring")
+	bootstrap := flag.String("bootstrap", "", "Bootstrap node address (host:port) to join existing ring (optional, uses default bootstrap nodes if not specified)")
+	create := flag.Bool("create", false, "Create a new Chord ring instead of joining (useful for local testing)")
+	authToken := flag.String("auth-token", "", "Authentication token for joining the ring (required for secure networks)")
 	logLevel := flag.String("log-level", "info", "Log level (trace, debug, info, warn, error)")
 	logFormat := flag.String("log-format", "console", "Log format (json, console)")
 	flag.Parse()
@@ -30,13 +32,23 @@ func main() {
 		Host:               *host,
 		Port:               *port,
 		HTTPPort:           *httpPort,
+		AuthToken:          *authToken,
 		M:                  160, // 2^160 address space
 		StabilizeInterval:  3 * time.Second,
 		FixFingersInterval: 3 * time.Second,
-		SuccessorListSize:  3,
+		SuccessorListSize:  8, // Advanced: maintain 8 successors for fault tolerance
 		RPCTimeout:         5 * time.Second,
 		LogLevel:           *logLevel,
 		LogFormat:          *logFormat,
+	}
+
+	// Set bootstrap nodes
+	if *bootstrap != "" {
+		// Use explicitly provided bootstrap node
+		cfg.BootstrapNodes = []string{*bootstrap}
+	} else {
+		// Use default bootstrap nodes from config
+		cfg.BootstrapNodes = config.DefaultBootstrapNodes
 	}
 
 	// Validate configuration
@@ -71,7 +83,7 @@ func main() {
 
 	// Create gRPC server
 	serverAddr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	grpcServer, err := transport.NewGRPCServer(node, serverAddr, logger)
+	grpcServer, err := transport.NewGRPCServer(node, serverAddr, cfg.AuthToken, logger)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create gRPC server")
 		os.Exit(1)
@@ -88,13 +100,14 @@ func main() {
 		Msg("gRPC server started")
 
 	// Create and set gRPC client for inter-node communication
-	grpcClient := transport.NewGRPCClient(logger, cfg.RPCTimeout)
+	grpcClient := transport.NewGRPCClient(logger, cfg.AuthToken, cfg.RPCTimeout)
 	node.SetRemote(grpcClient)
 
 	// Create HTTP API server
 	httpServer, err := api.NewServer(&api.Config{
-		HTTPPort: cfg.HTTPPort,
-		GRPCAddr: serverAddr,
+		HTTPPort:  cfg.HTTPPort,
+		GRPCAddr:  serverAddr,
+		AuthToken: cfg.AuthToken,
 	}, logger)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to create HTTP API server")
@@ -113,10 +126,13 @@ func main() {
 		Int("port", cfg.HTTPPort).
 		Msg("HTTP API server started")
 
+	// Set the WebSocket broadcaster for ring updates
+	node.SetBroadcaster(httpServer.GetWebSocketHub())
+
 	// Create or join Chord ring
-	if *bootstrap == "" {
-		// No bootstrap node specified, create new ring
-		logger.Info().Msg("Creating new Chord ring")
+	if *create {
+		// Explicitly creating new ring
+		logger.Info().Msg("Creating new Chord ring (--create flag set)")
 		if err := node.Create(); err != nil {
 			logger.Error().Err(err).Msg("Failed to create Chord ring")
 			cleanup(node, grpcServer, grpcClient, httpServer, logger)
@@ -126,41 +142,60 @@ func main() {
 			Str("node_id", node.ID().Text(16)[:16]).
 			Msg("Chord ring created successfully")
 	} else {
-		// Bootstrap node specified, join existing ring
+		// Try each bootstrap node until one succeeds
 		logger.Info().
-			Str("bootstrap", *bootstrap).
-			Msg("Joining existing Chord ring")
+			Int("bootstrap_count", len(cfg.BootstrapNodes)).
+			Msg("Attempting to join existing Chord ring")
 
-		// Get bootstrap node information via RPC
-		logger.Debug().
-			Str("bootstrap", *bootstrap).
-			Msg("Fetching bootstrap node information")
+		var joinErr error
+		joined := false
 
-		bootstrapNode, err := grpcClient.GetNodeInfo(*bootstrap)
-		if err != nil {
+		for _, bootstrapAddr := range cfg.BootstrapNodes {
+			logger.Debug().
+				Str("bootstrap", bootstrapAddr).
+				Msg("Trying bootstrap node")
+
+			// Get bootstrap node information via RPC
+			bootstrapNode, err := grpcClient.GetNodeInfo(bootstrapAddr)
+			if err != nil {
+				logger.Warn().
+					Err(err).
+					Str("bootstrap", bootstrapAddr).
+					Msg("Failed to contact bootstrap node, trying next")
+				joinErr = err
+				continue
+			}
+
+			logger.Info().
+				Str("bootstrap_id", bootstrapNode.ID.Text(16)[:16]).
+				Str("bootstrap_addr", bootstrapNode.Address()).
+				Msg("Retrieved bootstrap node information")
+
+			// Join the ring
+			if err := node.Join(bootstrapNode); err != nil {
+				logger.Warn().
+					Err(err).
+					Str("bootstrap", bootstrapAddr).
+					Msg("Failed to join via this bootstrap node, trying next")
+				joinErr = err
+				continue
+			}
+
+			logger.Info().
+				Str("node_id", node.ID().Text(16)[:16]).
+				Str("bootstrap", bootstrapAddr).
+				Msg("Successfully joined Chord ring")
+			joined = true
+			break
+		}
+
+		if !joined {
 			logger.Error().
-				Err(err).
-				Str("bootstrap", *bootstrap).
-				Msg("Failed to get bootstrap node information")
+				Err(joinErr).
+				Msg("Failed to join ring via any bootstrap node")
 			cleanup(node, grpcServer, grpcClient, httpServer, logger)
 			os.Exit(1)
 		}
-
-		logger.Info().
-			Str("bootstrap_id", bootstrapNode.ID.Text(16)[:16]).
-			Str("bootstrap_addr", bootstrapNode.Address()).
-			Msg("Retrieved bootstrap node information")
-
-		// Join the ring
-		if err := node.Join(bootstrapNode); err != nil {
-			logger.Error().Err(err).Msg("Failed to join Chord ring")
-			cleanup(node, grpcServer, grpcClient, httpServer, logger)
-			os.Exit(1)
-		}
-
-		logger.Info().
-			Str("node_id", node.ID().Text(16)[:16]).
-			Msg("Joined Chord ring successfully")
 	}
 
 	logger.Info().Msg("Torus node is ready")

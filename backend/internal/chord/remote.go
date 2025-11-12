@@ -3,6 +3,7 @@ package chord
 import (
 	"context"
 	"math/big"
+	"time"
 )
 
 // RemoteClient defines the interface for making remote calls to other Chord nodes.
@@ -47,4 +48,13 @@ type RemoteClient interface {
 	// DeleteTransferredKeys calls the DeleteTransferredKeys RPC on a remote node to delete keys in a range.
 	// Used after successful key transfer to clean up duplicates.
 	DeleteTransferredKeys(ctx context.Context, address string, startID, endID *big.Int) error
+
+	// SetReplica calls the SetReplica RPC on a remote node to store a replica.
+	SetReplica(ctx context.Context, address string, key string, value []byte, ttl time.Duration) error
+
+	// GetReplica calls the GetReplica RPC on a remote node to retrieve a replica.
+	GetReplica(ctx context.Context, address string, key string) ([]byte, bool, error)
+
+	// DeleteReplica calls the DeleteReplica RPC on a remote node to delete a replica.
+	DeleteReplica(ctx context.Context, address string, key string) error
 }

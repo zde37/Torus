@@ -12,6 +12,14 @@ import (
 	"github.com/zde37/torus/pkg"
 )
 
+const (
+	// replicationTimeout is the maximum time to wait for background replication operations
+	replicationTimeout = 10 * time.Second
+
+	// pingMessageStabilize is the message sent during stabilization pings
+	pingMessageStabilize = "stabilize"
+)
+
 // truncateHex safely truncates a hex string to the specified length.
 func truncateHex(hexStr string, maxLen int) string {
 	if len(hexStr) > maxLen {
@@ -37,6 +45,9 @@ type ChordNode struct {
 
 	// Remote client for RPC calls to other nodes
 	remote RemoteClient
+
+	// Broadcaster for ring update events
+	broadcaster RingUpdateBroadcaster
 
 	// Finger table (index 0 to M-1)
 	// finger[i] points to successor of (n + 2^i) mod 2^M
@@ -131,6 +142,29 @@ func (n *ChordNode) SetRemote(remote RemoteClient) {
 	n.remote = remote
 }
 
+// SetBroadcaster sets the broadcaster for ring update events.
+func (n *ChordNode) SetBroadcaster(broadcaster RingUpdateBroadcaster) {
+	n.broadcaster = broadcaster
+}
+
+// broadcastRingUpdate broadcasts a ring update event if a broadcaster is set.
+func (n *ChordNode) broadcastRingUpdate(eventType, message string) {
+	if n.broadcaster == nil {
+		return
+	}
+
+	event := RingUpdateEvent{
+		Type:      eventType,
+		NodeID:    truncateHex(n.id.Text(16), 16),
+		Timestamp: time.Now().Unix(),
+		Message:   message,
+	}
+
+	if err := n.broadcaster.BroadcastRingUpdate(event); err != nil {
+		n.logger.Warn().Err(err).Msg("Failed to broadcast ring update")
+	}
+}
+
 // successor returns the first successor (immediate successor).
 // This is equivalent to finger[0].node in standard Chord.
 func (n *ChordNode) successor() *NodeAddress {
@@ -200,6 +234,118 @@ func (n *ChordNode) setSuccessorList(list []*NodeAddress) {
 			n.successorList = append(n.successorList, list[i].Copy())
 		}
 	}
+}
+
+// updateSuccessorList updates the successor list by fetching the successor's successor list
+// and merging it with our own. This is called during stabilization to maintain r successors.
+func (n *ChordNode) updateSuccessorList() error {
+	succ := n.successor()
+	if succ == nil {
+		return nil
+	}
+
+	// If successor is self, no need to update
+	if succ.Equals(n.address) {
+		return nil
+	}
+
+	// If we don't have a remote client, skip
+	if n.remote == nil {
+		return nil
+	}
+
+	// Get successor's successor list
+	succList, err := n.remote.GetSuccessorList(succ.Address())
+	if err != nil {
+		n.logger.Debug().
+			Err(err).
+			Str("successor", succ.Address()).
+			Msg("Failed to get successor list from successor")
+		return nil // Don't fail on RPC error
+	}
+
+	// Build new successor list:
+	// [our_successor, successor's_successor_1, successor's_successor_2, ...]
+	// up to SuccessorListSize entries
+	newList := make([]*NodeAddress, 0, n.config.SuccessorListSize)
+
+	// Add our immediate successor first
+	newList = append(newList, succ.Copy())
+
+	// Add successors from our successor's list, avoiding duplicates
+	for _, node := range succList {
+		if len(newList) >= n.config.SuccessorListSize {
+			break
+		}
+		// Skip if it's us or already in the list
+		if node.Equals(n.address) {
+			continue
+		}
+		isDuplicate := false
+		for _, existing := range newList {
+			if existing.Equals(node) {
+				isDuplicate = true
+				break
+			}
+		}
+		if !isDuplicate {
+			newList = append(newList, node.Copy())
+		}
+	}
+
+	// Update the successor list
+	n.setSuccessorList(newList)
+
+	n.logger.Debug().
+		Int("list_size", len(newList)).
+		Str("first_successor", truncateHex(succ.ID.Text(16), 8)).
+		Msg("Successor list updated")
+
+	return nil
+}
+
+// findFirstAliveSuccessor iterates through the successor list and returns the first alive successor.
+// It uses Ping RPC to check if each successor is alive.
+// Returns nil if no alive successor is found.
+func (n *ChordNode) findFirstAliveSuccessor() *NodeAddress {
+	n.successorMu.RLock()
+	successors := make([]*NodeAddress, len(n.successorList))
+	copy(successors, n.successorList)
+	n.successorMu.RUnlock()
+
+	// If we don't have a remote client, return the first successor
+	if n.remote == nil {
+		if len(successors) > 0 {
+			return successors[0].Copy()
+		}
+		return nil
+	}
+
+	// Try each successor in order
+	for _, succ := range successors {
+		if succ == nil || succ.Equals(n.address) {
+			continue
+		}
+
+		// Try to ping the successor
+		_, err := n.remote.Ping(succ.Address(), "health_check")
+		if err == nil {
+			// Successor is alive
+			n.logger.Debug().
+				Str("successor", truncateHex(succ.ID.Text(16), 8)).
+				Msg("Found alive successor")
+			return succ.Copy()
+		}
+
+		n.logger.Debug().
+			Err(err).
+			Str("successor", truncateHex(succ.ID.Text(16), 8)).
+			Msg("Successor is not reachable, trying next")
+	}
+
+	// No alive successor found
+	n.logger.Warn().Msg("No alive successor found in successor list")
+	return nil
 }
 
 // getPredecessor returns a copy of the predecessor.
@@ -297,6 +443,10 @@ func (n *ChordNode) Create() error {
 	n.startBackgroundTasks()
 
 	n.logger.Info().Msg("Chord ring created successfully")
+
+	// Broadcast ring update event
+	n.broadcastRingUpdate(EventNodeJoin, "Node created new Chord ring")
+
 	return nil
 }
 
@@ -422,6 +572,10 @@ func (n *ChordNode) Join(bootstrapAddr *NodeAddress) error {
 	n.startBackgroundTasks()
 
 	n.logger.Info().Msg("Joined Chord ring successfully")
+
+	// Broadcast ring update event
+	n.broadcastRingUpdate(EventNodeJoin, "Node joined Chord ring")
+
 	return nil
 }
 
@@ -513,17 +667,51 @@ func (n *ChordNode) stabilize() error {
 	// Ask successor for its predecessor
 	x, err := n.remote.GetPredecessor(succ.Address())
 	if err != nil {
-		n.logger.Debug().
+		n.logger.Warn().
 			Err(err).
 			Str("successor", succ.Address()).
-			Msg("Failed to get predecessor from successor")
-		return nil // Don't fail stabilization on RPC error
+			Msg("Failed to contact successor, attempting to find alive successor")
+
+		// Successor is unreachable - try to find an alive successor from successor list
+		aliveSucc := n.findFirstAliveSuccessor()
+		if aliveSucc != nil && !aliveSucc.Equals(n.address) {
+			n.logger.Info().
+				Str("old_successor", succ.Address()).
+				Str("new_successor", aliveSucc.Address()).
+				Msg("Replacing failed successor with alive successor from list")
+			n.setSuccessor(aliveSucc)
+			succ = aliveSucc
+
+			// Try to get predecessor from new successor
+			x, err = n.remote.GetPredecessor(succ.Address())
+			if err != nil {
+				n.logger.Debug().
+					Err(err).
+					Str("successor", succ.Address()).
+					Msg("Failed to get predecessor from new successor")
+				// Continue with stabilization anyway
+			}
+		} else {
+			// No alive successor found, can't proceed with stabilization
+			return nil
+		}
 	}
 
 	// If x is between (n, successor), then x should be our successor
+	// But first verify that x is actually reachable
 	if x != nil && hash.Between(x.ID, n.id, succ.ID) {
-		n.setSuccessor(x)
-		succ = x
+		// Verify x is alive before setting it as successor
+		_, err := n.remote.Ping(x.Address(), pingMessageStabilize)
+		if err != nil {
+			n.logger.Warn().
+				Err(err).
+				Str("potential_successor", x.Address()).
+				Msg("Potential successor is unreachable, keeping current successor")
+			// Don't update successor if the new one is dead
+		} else {
+			n.setSuccessor(x)
+			succ = x
+		}
 	}
 
 	// Notify successor that we might be its predecessor
@@ -535,9 +723,34 @@ func (n *ChordNode) stabilize() error {
 		return nil // Don't fail stabilization on RPC error
 	}
 
+	// Update successor list for fault tolerance
+	if err := n.updateSuccessorList(); err != nil {
+		n.logger.Debug().
+			Err(err).
+			Msg("Failed to update successor list")
+		// Don't fail stabilization on error
+	}
+
+	// Check if predecessor is still alive
+	pred := n.getPredecessor()
+	if pred != nil && !pred.Equals(n.address) {
+		// Try to ping predecessor
+		_, err := n.remote.Ping(pred.Address(), pingMessageStabilize)
+		if err != nil {
+			n.logger.Warn().
+				Err(err).
+				Str("predecessor", pred.Address()).
+				Msg("Predecessor is unreachable, clearing it")
+			n.setPredecessor(nil)
+		}
+	}
+
 	n.logger.Debug().
 		Str("successor", truncateHex(succ.ID.Text(16), 8)).
 		Msg("Stabilize completed")
+
+	// Broadcast ring update event after stabilization
+	n.broadcastRingUpdate(EventStabilization, "Ring stabilization completed")
 
 	return nil
 }
@@ -725,6 +938,9 @@ func (n *ChordNode) Shutdown() error {
 
 	n.logger.Info().Msg("Shutting down ChordNode")
 
+	// Broadcast ring update event before stopping background tasks
+	n.broadcastRingUpdate(EventNodeLeave, "Node leaving Chord ring")
+
 	// Cancel context to stop background tasks
 	n.cancel()
 
@@ -869,7 +1085,32 @@ func (n *ChordNode) Get(ctx context.Context, key string) ([]byte, bool, error) {
 
 	value, found, err := n.remote.Get(ctx, responsible.Address(), key)
 	if err != nil {
-		return nil, false, fmt.Errorf("remote get failed: %w", err)
+		// Primary node failed - try to get from replicas
+		n.logger.Warn().
+			Err(err).
+			Str("key", key).
+			Str("responsible_node", responsible.Address()).
+			Msg("Primary node failed, trying replicas")
+
+		// Get successor list to find replicas
+		successors := n.getSuccessorList()
+		for _, succ := range successors {
+			if succ.Equals(responsible) || succ.Equals(n.address) {
+				continue // Skip the failed primary and self
+			}
+
+			// Try to get replica from this successor
+			replicaValue, replicaFound, replicaErr := n.remote.GetReplica(ctx, succ.Address(), key)
+			if replicaErr == nil && replicaFound {
+				n.logger.Info().
+					Str("key", key).
+					Str("replica_node", succ.Address()).
+					Msg("Retrieved value from replica")
+				return replicaValue, true, nil
+			}
+		}
+
+		return nil, false, fmt.Errorf("remote get failed and no replicas found: %w", err)
 	}
 
 	return value, found, nil
@@ -901,6 +1142,15 @@ func (n *ChordNode) Set(ctx context.Context, key string, value []byte, ttl time.
 			Str("key", key).
 			Int("value_size", len(value)).
 			Msg("Stored key locally")
+
+		// Replicate to successors for fault tolerance
+		// Use background context with timeout instead of request context
+		// to avoid cancellation when HTTP request completes
+		go func() {
+			replicationCtx, cancel := context.WithTimeout(context.Background(), replicationTimeout)
+			defer cancel()
+			n.replicateToSuccessors(replicationCtx, key, value, ttl)
+		}()
 
 		return nil
 	}
@@ -953,6 +1203,15 @@ func (n *ChordNode) Delete(ctx context.Context, key string) error {
 			Str("key", key).
 			Msg("Deleted key locally")
 
+		// Delete replicas from successors
+		// Use background context with timeout instead of request context
+		// to avoid cancellation when HTTP request completes
+		go func() {
+			deletionCtx, cancel := context.WithTimeout(context.Background(), replicationTimeout)
+			defer cancel()
+			n.deleteReplicasFromSuccessors(deletionCtx, key)
+		}()
+
 		return nil
 	}
 
@@ -1002,4 +1261,147 @@ func (n *ChordNode) GetFingerTable() []*FingerEntry {
 // Excludes Chord metadata keys (predecessor, successors, finger table).
 func (n *ChordNode) GetKeyCount(ctx context.Context) (int, error) {
 	return n.storage.CountUserKeys(ctx)
+}
+
+// SetReplica stores a replica of a key on this node.
+// This is called by other nodes to store replicas for fault tolerance.
+func (n *ChordNode) SetReplica(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+	if key == "" {
+		return fmt.Errorf("key cannot be empty")
+	}
+
+	if err := n.storage.SetReplica(ctx, key, value, ttl); err != nil {
+		return fmt.Errorf("failed to set replica: %w", err)
+	}
+
+	n.logger.Debug().
+		Str("key", key).
+		Int("value_size", len(value)).
+		Msg("Stored replica locally")
+
+	return nil
+}
+
+// GetReplica retrieves a replica value by key.
+func (n *ChordNode) GetReplica(ctx context.Context, key string) ([]byte, bool, error) {
+	if key == "" {
+		return nil, false, fmt.Errorf("key cannot be empty")
+	}
+
+	value, err := n.storage.GetReplica(ctx, key)
+	if err != nil {
+		if err.Error() == "key not found" {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("failed to get replica: %w", err)
+	}
+
+	return value, true, nil
+}
+
+// DeleteReplica removes a replica of a key from this node.
+func (n *ChordNode) DeleteReplica(ctx context.Context, key string) error {
+	if key == "" {
+		return fmt.Errorf("key cannot be empty")
+	}
+
+	if err := n.storage.DeleteReplica(ctx, key); err != nil {
+		// Don't error if key not found - it might have already been deleted
+		if err.Error() != "key not found" {
+			return fmt.Errorf("failed to delete replica: %w", err)
+		}
+	}
+
+	n.logger.Debug().
+		Str("key", key).
+		Msg("Deleted replica locally")
+
+	return nil
+}
+
+// replicateToSuccessors replicates a key-value pair to the first r successors.
+// This provides fault tolerance - if the primary node fails, replicas can serve the data.
+func (n *ChordNode) replicateToSuccessors(ctx context.Context, key string, value []byte, ttl time.Duration) {
+	if n.remote == nil {
+		n.logger.Debug().Str("key", key).Msg("Remote client not available, skipping replication")
+		return
+	}
+
+	successors := n.getSuccessorList()
+	if len(successors) == 0 {
+		n.logger.Debug().Str("key", key).Msg("No successors available for replication")
+		return
+	}
+
+	// Replicate to up to r successors (skip self)
+	replicaCount := 0
+	for _, succ := range successors {
+		if succ.Equals(n.address) {
+			continue // Skip self
+		}
+
+		// Try to replicate to this successor
+		if err := n.remote.SetReplica(ctx, succ.Address(), key, value, ttl); err != nil {
+			n.logger.Warn().
+				Err(err).
+				Str("key", key).
+				Str("successor", succ.Address()).
+				Msg("Failed to replicate key to successor")
+			// Continue trying other successors
+		} else {
+			replicaCount++
+			n.logger.Debug().
+				Str("key", key).
+				Str("successor", succ.Address()).
+				Msg("Replicated key to successor")
+		}
+
+		// Stop after replicating to r successors
+		if replicaCount >= n.config.SuccessorListSize {
+			break
+		}
+	}
+
+	if replicaCount > 0 {
+		n.logger.Debug().
+			Str("key", key).
+			Int("replica_count", replicaCount).
+			Msg("Key replication completed")
+	}
+}
+
+// deleteReplicasFromSuccessors deletes replicas from successors.
+func (n *ChordNode) deleteReplicasFromSuccessors(ctx context.Context, key string) {
+	if n.remote == nil {
+		n.logger.Debug().Str("key", key).Msg("Remote client not available, skipping replica deletion")
+		return
+	}
+
+	successors := n.getSuccessorList()
+	if len(successors) == 0 {
+		n.logger.Debug().Str("key", key).Msg("No successors available for replica deletion")
+		return
+	}
+
+	// Delete replicas from successors (skip self)
+	for _, succ := range successors {
+		if succ.Equals(n.address) {
+			continue // Skip self
+		}
+
+		// Try to delete replica from this successor
+		if err := n.remote.DeleteReplica(ctx, succ.Address(), key); err != nil {
+			n.logger.Warn().
+				Err(err).
+				Str("key", key).
+				Str("successor", succ.Address()).
+				Msg("Failed to delete replica from successor")
+			// Continue trying other successors
+		} else {
+			n.logger.Debug().
+				Str("key", key).
+				Str("successor", succ.Address()).
+				Msg("Deleted replica from successor")
+		}
+	}
 }

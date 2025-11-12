@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/zde37/torus/internal/chord"
 	"github.com/zde37/torus/pkg"
@@ -20,7 +21,8 @@ var _ chord.RemoteClient = (*GRPCClient)(nil)
 
 // GRPCClient manages connections to remote Chord nodes.
 type GRPCClient struct {
-	logger *pkg.Logger
+	logger    *pkg.Logger
+	authToken string // Authentication token for node-to-node communication
 
 	// Connection pool
 	connections map[string]*grpc.ClientConn
@@ -31,16 +33,26 @@ type GRPCClient struct {
 }
 
 // NewGRPCClient creates a new gRPC client.
-func NewGRPCClient(logger *pkg.Logger, timeout time.Duration) *GRPCClient {
+func NewGRPCClient(logger *pkg.Logger, authToken string, timeout time.Duration) *GRPCClient {
 	if logger == nil {
 		logger, _ = pkg.New(pkg.DefaultConfig())
 	}
 
 	return &GRPCClient{
 		logger:      logger.WithFields(pkg.Fields{"component": "grpc_client"}),
+		authToken:   authToken,
 		connections: make(map[string]*grpc.ClientConn),
 		timeout:     timeout,
 	}
+}
+
+// withAuthMetadata attaches the auth token to the context metadata if configured.
+func (c *GRPCClient) withAuthMetadata(ctx context.Context) context.Context {
+	if c.authToken == "" {
+		return ctx
+	}
+	md := metadata.Pairs(AuthTokenHeader, c.authToken)
+	return metadata.NewOutgoingContext(ctx, md)
 }
 
 // getConnection returns a connection to the given address, creating one if needed.
@@ -92,6 +104,9 @@ func (c *GRPCClient) FindSuccessor(address string, id *big.Int) (*chord.NodeAddr
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
 	req := &pb.FindSuccessorRequest{
 		Id: id.Bytes(),
 	}
@@ -115,6 +130,9 @@ func (c *GRPCClient) FindSuccessorWithPath(address string, id *big.Int) (*chord.
 	client := pb.NewChordServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
 
 	req := &pb.FindSuccessorWithPathRequest{
 		Id: id.Bytes(),
@@ -145,6 +163,9 @@ func (c *GRPCClient) GetPredecessor(address string) (*chord.NodeAddress, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
 	req := &pb.GetPredecessorRequest{}
 
 	resp, err := client.GetPredecessor(ctx, req)
@@ -165,6 +186,9 @@ func (c *GRPCClient) Notify(address string, node *chord.NodeAddress) error {
 	client := pb.NewChordServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
 
 	req := &pb.NotifyRequest{
 		Node: nodeAddressToProto(node),
@@ -188,6 +212,9 @@ func (c *GRPCClient) GetSuccessorList(address string) ([]*chord.NodeAddress, err
 	client := pb.NewChordServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
 
 	req := &pb.GetSuccessorListRequest{}
 
@@ -216,6 +243,9 @@ func (c *GRPCClient) Ping(address string, message string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
 	req := &pb.PingRequest{
 		Message: message,
 	}
@@ -239,6 +269,9 @@ func (c *GRPCClient) GetNodeInfo(address string) (*chord.NodeAddress, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
 	req := &pb.GetNodeInfoRequest{}
 
 	resp, err := client.GetNodeInfo(ctx, req)
@@ -260,6 +293,9 @@ func (c *GRPCClient) ClosestPrecedingFinger(address string, id *big.Int) (*chord
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
 	req := &pb.ClosestPrecedingFingerRequest{
 		Id: id.Bytes(),
 	}
@@ -280,6 +316,9 @@ func (c *GRPCClient) Get(ctx context.Context, address string, key string) ([]byt
 	}
 
 	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
 
 	// Use the provided context with a timeout fallback
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
@@ -307,13 +346,16 @@ func (c *GRPCClient) Set(ctx context.Context, address string, key string, value 
 
 	client := pb.NewChordServiceClient(conn)
 
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
 	// Use the provided context with a timeout fallback
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
 		defer cancel()
 	}
-
+	// TODO: add option for users to set TTL for keys
 	req := &pb.SetRequest{
 		Key:   key,
 		Value: value,
@@ -339,6 +381,9 @@ func (c *GRPCClient) Delete(ctx context.Context, address string, key string) err
 	}
 
 	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
 
 	// Use the provided context with a timeout fallback
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
@@ -369,6 +414,9 @@ func (c *GRPCClient) TransferKeys(ctx context.Context, address string, startID, 
 	}
 
 	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
 
 	// Use the provided context with a timeout fallback
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
@@ -410,6 +458,9 @@ func (c *GRPCClient) DeleteTransferredKeys(ctx context.Context, address string, 
 
 	client := pb.NewChordServiceClient(conn)
 
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
 	// Use the provided context with a timeout fallback
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
@@ -435,6 +486,105 @@ func (c *GRPCClient) DeleteTransferredKeys(ctx context.Context, address string, 
 		Int("key_count", int(resp.Count)).
 		Str("address", address).
 		Msg("Deleted transferred keys on remote node")
+
+	return nil
+}
+
+// SetReplica calls the SetReplica RPC on a remote node.
+func (c *GRPCClient) SetReplica(ctx context.Context, address string, key string, value []byte, ttl time.Duration) error {
+	conn, err := c.getConnection(address)
+	if err != nil {
+		return err
+	}
+
+	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
+	// Use the provided context with a timeout fallback
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
+	req := &pb.SetReplicaRequest{
+		Key:        key,
+		Value:      value,
+		TtlSeconds: int64(ttl.Seconds()),
+	}
+
+	resp, err := client.SetReplica(ctx, req)
+	if err != nil {
+		return fmt.Errorf("SetReplica RPC failed: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("remote node failed to set replica")
+	}
+
+	return nil
+}
+
+// GetReplica calls the GetReplica RPC on a remote node.
+func (c *GRPCClient) GetReplica(ctx context.Context, address string, key string) ([]byte, bool, error) {
+	conn, err := c.getConnection(address)
+	if err != nil {
+		return nil, false, err
+	}
+
+	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
+	// Use the provided context with a timeout fallback
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
+	req := &pb.GetReplicaRequest{Key: key}
+
+	resp, err := client.GetReplica(ctx, req)
+	if err != nil {
+		return nil, false, fmt.Errorf("GetReplica RPC failed: %w", err)
+	}
+
+	return resp.Value, resp.Found, nil
+}
+
+// DeleteReplica calls the DeleteReplica RPC on a remote node.
+func (c *GRPCClient) DeleteReplica(ctx context.Context, address string, key string) error {
+	conn, err := c.getConnection(address)
+	if err != nil {
+		return err
+	}
+
+	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
+	// Use the provided context with a timeout fallback
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
+	req := &pb.DeleteReplicaRequest{Key: key}
+
+	resp, err := client.DeleteReplica(ctx, req)
+	if err != nil {
+		return fmt.Errorf("DeleteReplica RPC failed: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("remote node failed to delete replica")
+	}
 
 	return nil
 }

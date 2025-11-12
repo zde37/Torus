@@ -7,8 +7,16 @@ export class ChordWebSocketClient {
   private reconnectDelay = 3000;
   private listeners: Map<string, Set<(data: any) => void>> = new Map();
 
-  constructor(url: string = 'ws://localhost:8080/api/ws') {
-    this.url = url;
+  constructor(url?: string) {
+    // Derive WebSocket URL from API base URL if not provided
+    if (!url) {
+      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+      // Convert http://host:port to ws://host:port/api/ws
+      const wsUrl = apiBaseUrl.replace(/^http/, 'ws') + '/api/ws';
+      this.url = wsUrl;
+    } else {
+      this.url = url;
+    }
   }
 
   connect(): Promise<void> {

@@ -19,9 +19,10 @@ import (
 type GRPCServer struct {
 	pb.UnimplementedChordServiceServer
 
-	node   *chord.ChordNode
-	server *grpc.Server
-	logger *pkg.Logger
+	node      *chord.ChordNode
+	server    *grpc.Server
+	logger    *pkg.Logger
+	authToken string // Authentication token for node-to-node communication
 
 	// Server address
 	address  string
@@ -29,7 +30,7 @@ type GRPCServer struct {
 }
 
 // NewGRPCServer creates a new gRPC server for the given ChordNode.
-func NewGRPCServer(node *chord.ChordNode, address string, logger *pkg.Logger) (*GRPCServer, error) {
+func NewGRPCServer(node *chord.ChordNode, address string, authToken string, logger *pkg.Logger) (*GRPCServer, error) {
 	if node == nil {
 		return nil, fmt.Errorf("node cannot be nil")
 	}
@@ -38,9 +39,10 @@ func NewGRPCServer(node *chord.ChordNode, address string, logger *pkg.Logger) (*
 	}
 
 	s := &GRPCServer{
-		node:    node,
-		address: address,
-		logger:  logger.WithFields(pkg.Fields{"component": "grpc_server"}),
+		node:      node,
+		address:   address,
+		authToken: authToken,
+		logger:    logger.WithFields(pkg.Fields{"component": "grpc_server"}),
 	}
 
 	return s, nil
@@ -58,6 +60,7 @@ func (s *GRPCServer) Start() error {
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(4 * 1024 * 1024), // 4MB
 		grpc.MaxSendMsgSize(4 * 1024 * 1024), // 4MB
+		grpc.UnaryInterceptor(AuthInterceptor(s.authToken)), // Add auth interceptor
 	}
 
 	s.server = grpc.NewServer(opts...)
@@ -420,6 +423,62 @@ func (s *GRPCServer) GetFingerTable(ctx context.Context, req *pb.GetFingerTableR
 
 	return &pb.GetFingerTableResponse{
 		Entries: pbEntries,
+	}, nil
+}
+
+// SetReplica implements the SetReplica RPC for replication.
+func (s *GRPCServer) SetReplica(ctx context.Context, req *pb.SetReplicaRequest) (*pb.SetReplicaResponse, error) {
+	s.logger.Debug().Str("key", req.Key).Msg("SetReplica called")
+
+	if req.Key == "" {
+		return nil, fmt.Errorf("key cannot be empty")
+	}
+
+	// Store replica in local storage
+	if err := s.node.SetReplica(ctx, req.Key, req.Value, time.Duration(req.TtlSeconds)*time.Second); err != nil {
+		return nil, fmt.Errorf("failed to set replica: %w", err)
+	}
+
+	return &pb.SetReplicaResponse{
+		Success: true,
+	}, nil
+}
+
+// GetReplica implements the GetReplica RPC for retrieving replicas.
+func (s *GRPCServer) GetReplica(ctx context.Context, req *pb.GetReplicaRequest) (*pb.GetReplicaResponse, error) {
+	s.logger.Debug().Str("key", req.Key).Msg("GetReplica called")
+
+	if req.Key == "" {
+		return nil, fmt.Errorf("key cannot be empty")
+	}
+
+	// Get replica from local storage
+	value, found, err := s.node.GetReplica(ctx, req.Key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get replica: %w", err)
+	}
+
+	return &pb.GetReplicaResponse{
+		Value: value,
+		Found: found,
+	}, nil
+}
+
+// DeleteReplica implements the DeleteReplica RPC for deleting replicas.
+func (s *GRPCServer) DeleteReplica(ctx context.Context, req *pb.DeleteReplicaRequest) (*pb.DeleteReplicaResponse, error) {
+	s.logger.Debug().Str("key", req.Key).Msg("DeleteReplica called")
+
+	if req.Key == "" {
+		return nil, fmt.Errorf("key cannot be empty")
+	}
+
+	// Delete replica from local storage
+	if err := s.node.DeleteReplica(ctx, req.Key); err != nil {
+		return nil, fmt.Errorf("failed to delete replica: %w", err)
+	}
+
+	return &pb.DeleteReplicaResponse{
+		Success: true,
 	}, nil
 }
 

@@ -37,11 +37,29 @@ make test-coverage     # Run tests with coverage statistics
 
 ### Build the Application
 
+Builds the application binary to `bin/torus`.
 ```bash
 make build
 ```
 
-Builds the application binary to `bin/torus`.
+### Usage
+
+Local testing (create new ring):
+```bash
+./bin/torus -host <host> -port <grpc-port> -http-port <http-port> -auth-token "your-secret-token" -create
+```
+
+Production (join existing ring via default bootstrap nodes):
+This will automatically attempt to join torus.zde37.com (from DefaultBootstrapNodes)
+```bash
+./bin/torus -host <host> -port <grpc-port> -http-port <http-port> -auth-token "your-secret-token"
+```
+
+Join specific bootstrap node:
+```bash
+./bin/torus -host <host> -port <grpc-port> -http-port <http-port> -auth-token "your-secret-token" -bootstrap "other-node.com:<port>"
+```
+
 
 ## Available Make Targets
 

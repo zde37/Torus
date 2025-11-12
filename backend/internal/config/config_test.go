@@ -91,7 +91,7 @@ func TestConfigFields(t *testing.T) {
 	assert.Equal(t, 8440, cfg.Port)
 	assert.Equal(t, 8080, cfg.HTTPPort)
 	assert.Equal(t, 160, cfg.M)
-	assert.Equal(t, 3, cfg.SuccessorListSize)
+	assert.Equal(t, 8, cfg.SuccessorListSize)
 	assert.Equal(t, "info", cfg.LogLevel)
 	assert.Equal(t, "console", cfg.LogFormat)
 }

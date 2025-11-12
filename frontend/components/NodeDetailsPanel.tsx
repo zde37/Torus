@@ -81,6 +81,33 @@ export default function NodeDetailsPanel({ node }: NodeDetailsPanelProps) {
         </div>
       )}
 
+      {/* Successor List (for fault tolerance) */}
+      {node.successors && node.successors.length > 0 && (
+        <div className="border-t border-gray-700 pt-4">
+          <label className="text-sm text-gray-400 mb-2 block">
+            Successor List ({node.successors.length} successors)
+          </label>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {node.successors.map((succ, index) => (
+              <div
+                key={`${succ.id}-${index}`}
+                className="bg-gray-900 p-2 rounded text-xs"
+              >
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-gray-400">successor[{index}]</span>
+                  <span className="text-green-400 font-mono text-[10px]">
+                    {formatId(succ.id)}
+                  </span>
+                </div>
+                <p className="text-gray-500 text-[10px]">
+                  {succ.host}:{succ.port}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Predecessor */}
       {node.predecessor && (
         <div className="border-t border-gray-700 pt-4">

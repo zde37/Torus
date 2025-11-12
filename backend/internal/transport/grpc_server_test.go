@@ -15,6 +15,10 @@ import (
 	pb "github.com/zde37/torus/protobuf/protogen"
 )
 
+var (
+	TEST_AUTH_TOKEN = "auth_token"
+)
+
 // createTestNode creates a ChordNode for testing.
 func createTestNode(t *testing.T, port int) *chord.ChordNode {
 	t.Helper()
@@ -75,7 +79,7 @@ func TestNewGRPCServer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server, err := NewGRPCServer(tt.node, tt.address, tt.logger)
+			server, err := NewGRPCServer(tt.node, tt.address, TEST_AUTH_TOKEN, tt.logger)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -102,7 +106,7 @@ func TestGRPCServer_StartStop(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9010", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9010", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	// Start server
@@ -126,7 +130,7 @@ func TestGRPCServer_FindSuccessor(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9020", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9020",TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -176,7 +180,7 @@ func TestGRPCServer_GetPredecessor(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9030", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9030", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	// Initially, predecessor should be nil (single node ring)
@@ -206,7 +210,7 @@ func TestGRPCServer_Notify(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9040", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9040", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -259,7 +263,7 @@ func TestGRPCServer_GetSuccessorList(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9050", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9050", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	req := &pb.GetSuccessorListRequest{}
@@ -281,7 +285,7 @@ func TestGRPCServer_Ping(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9060", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9060", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -318,7 +322,7 @@ func TestGRPCServer_ClosestPrecedingFinger(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9070", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9070", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -367,7 +371,7 @@ func TestGRPCServer_TransferKeys(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9080", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9080", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	// Create the ring
@@ -398,7 +402,7 @@ func TestGRPCServer_Get(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9090", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9090", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	// For MVP, Get returns not found
@@ -418,7 +422,7 @@ func TestGRPCServer_Set(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9100", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9100",TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	// For MVP, Set returns success
@@ -440,7 +444,7 @@ func TestGRPCServer_Delete(t *testing.T) {
 	logger, err := pkg.New(pkg.DefaultConfig())
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9110", logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9110",TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	// For MVP, Delete returns success

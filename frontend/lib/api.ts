@@ -126,6 +126,7 @@ export class TorusAPI {
       if (successors && successors.length > 0) {
         startNode.successor = successors[0];
       }
+      startNode.successors = successors || [];
 
       discovered.set(startNode.id, startNode);
       visited.add(startNode.id);
@@ -161,6 +162,7 @@ export class TorusAPI {
           if (nextSuccessors && nextSuccessors.length > 0) {
             nextNode.successor = nextSuccessors[0];
           }
+          nextNode.successors = nextSuccessors || [];
 
           discovered.set(nextNode.id, nextNode);
           visited.add(nextNode.id);
@@ -168,7 +170,44 @@ export class TorusAPI {
           current = nextNode;
         } catch (error) {
           console.error(`Failed to query node at ${nextHost}:${nextHttpPort}:`, error);
-          break;
+
+          // Mark this failed node as visited to avoid retrying
+          visited.add(nextId);
+
+          // Try to find an alternate path using successor list
+          const successors = current.successors;
+          if (successors && successors.length > 1) {
+            // Try the next successor in the list
+            for (let i = 1; i < successors.length; i++) {
+              const altSuccessor = successors[i];
+              if (!visited.has(altSuccessor.id) && altSuccessor.httpPort) {
+                try {
+                  console.log(`Trying alternate successor: ${altSuccessor.host}:${altSuccessor.httpPort}`);
+                  const altBaseURL = `http://${altSuccessor.host}:${altSuccessor.httpPort}`;
+                  const altAPI = new TorusAPI(altBaseURL);
+
+                  const altNode = await altAPI.getNodeInfo();
+                  const altSuccessors = await altAPI.getSuccessors();
+
+                  if (altSuccessors && altSuccessors.length > 0) {
+                    altNode.successor = altSuccessors[0];
+                  }
+                  altNode.successors = altSuccessors || [];
+
+                  discovered.set(altNode.id, altNode);
+                  visited.add(altNode.id);
+                  current = altNode;
+                  break; // Successfully found alternate path
+                } catch (altError) {
+                  console.error(`Alternate successor also failed:`, altError);
+                  continue; // Try next alternate
+                }
+              }
+            }
+          } else {
+            // No alternates available, stop discovery
+            break;
+          }
         }
       }
 

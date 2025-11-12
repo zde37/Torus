@@ -5,6 +5,7 @@ export interface ChordNode {
   port: number; // gRPC port
   httpPort?: number; // HTTP API port
   successor?: ChordNode;
+  successors?: ChordNode[]; // Full successor list (up to r successors)
   predecessor?: ChordNode;
   fingerTable?: FingerEntry[];
   keyCount?: number;

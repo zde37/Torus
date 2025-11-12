@@ -34,6 +34,9 @@ const (
 	ChordService_Delete_FullMethodName                 = "/protogen.ChordService/Delete"
 	ChordService_LookupPath_FullMethodName             = "/protogen.ChordService/LookupPath"
 	ChordService_GetFingerTable_FullMethodName         = "/protogen.ChordService/GetFingerTable"
+	ChordService_SetReplica_FullMethodName             = "/protogen.ChordService/SetReplica"
+	ChordService_GetReplica_FullMethodName             = "/protogen.ChordService/GetReplica"
+	ChordService_DeleteReplica_FullMethodName          = "/protogen.ChordService/DeleteReplica"
 )
 
 // ChordServiceClient is the client API for ChordService service.
@@ -82,6 +85,15 @@ type ChordServiceClient interface {
 	// GetFingerTable returns the node's finger table.
 	// Used for visualization.
 	GetFingerTable(ctx context.Context, in *GetFingerTableRequest, opts ...grpc.CallOption) (*GetFingerTableResponse, error)
+	// SetReplica stores a replica of a key on a successor node.
+	// Used for data replication to provide fault tolerance.
+	SetReplica(ctx context.Context, in *SetReplicaRequest, opts ...grpc.CallOption) (*SetReplicaResponse, error)
+	// GetReplica retrieves a replica of a key.
+	// Used as fallback when primary node fails.
+	GetReplica(ctx context.Context, in *GetReplicaRequest, opts ...grpc.CallOption) (*GetReplicaResponse, error)
+	// DeleteReplica removes a replica of a key.
+	// Used to maintain consistency when deleting keys.
+	DeleteReplica(ctx context.Context, in *DeleteReplicaRequest, opts ...grpc.CallOption) (*DeleteReplicaResponse, error)
 }
 
 type chordServiceClient struct {
@@ -242,6 +254,36 @@ func (c *chordServiceClient) GetFingerTable(ctx context.Context, in *GetFingerTa
 	return out, nil
 }
 
+func (c *chordServiceClient) SetReplica(ctx context.Context, in *SetReplicaRequest, opts ...grpc.CallOption) (*SetReplicaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetReplicaResponse)
+	err := c.cc.Invoke(ctx, ChordService_SetReplica_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chordServiceClient) GetReplica(ctx context.Context, in *GetReplicaRequest, opts ...grpc.CallOption) (*GetReplicaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetReplicaResponse)
+	err := c.cc.Invoke(ctx, ChordService_GetReplica_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chordServiceClient) DeleteReplica(ctx context.Context, in *DeleteReplicaRequest, opts ...grpc.CallOption) (*DeleteReplicaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteReplicaResponse)
+	err := c.cc.Invoke(ctx, ChordService_DeleteReplica_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChordServiceServer is the server API for ChordService service.
 // All implementations must embed UnimplementedChordServiceServer
 // for forward compatibility.
@@ -288,6 +330,15 @@ type ChordServiceServer interface {
 	// GetFingerTable returns the node's finger table.
 	// Used for visualization.
 	GetFingerTable(context.Context, *GetFingerTableRequest) (*GetFingerTableResponse, error)
+	// SetReplica stores a replica of a key on a successor node.
+	// Used for data replication to provide fault tolerance.
+	SetReplica(context.Context, *SetReplicaRequest) (*SetReplicaResponse, error)
+	// GetReplica retrieves a replica of a key.
+	// Used as fallback when primary node fails.
+	GetReplica(context.Context, *GetReplicaRequest) (*GetReplicaResponse, error)
+	// DeleteReplica removes a replica of a key.
+	// Used to maintain consistency when deleting keys.
+	DeleteReplica(context.Context, *DeleteReplicaRequest) (*DeleteReplicaResponse, error)
 	mustEmbedUnimplementedChordServiceServer()
 }
 
@@ -342,6 +393,15 @@ func (UnimplementedChordServiceServer) LookupPath(context.Context, *LookupPathRe
 }
 func (UnimplementedChordServiceServer) GetFingerTable(context.Context, *GetFingerTableRequest) (*GetFingerTableResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetFingerTable not implemented")
+}
+func (UnimplementedChordServiceServer) SetReplica(context.Context, *SetReplicaRequest) (*SetReplicaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetReplica not implemented")
+}
+func (UnimplementedChordServiceServer) GetReplica(context.Context, *GetReplicaRequest) (*GetReplicaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetReplica not implemented")
+}
+func (UnimplementedChordServiceServer) DeleteReplica(context.Context, *DeleteReplicaRequest) (*DeleteReplicaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteReplica not implemented")
 }
 func (UnimplementedChordServiceServer) mustEmbedUnimplementedChordServiceServer() {}
 func (UnimplementedChordServiceServer) testEmbeddedByValue()                      {}
@@ -634,6 +694,60 @@ func _ChordService_GetFingerTable_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChordService_SetReplica_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetReplicaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).SetReplica(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_SetReplica_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).SetReplica(ctx, req.(*SetReplicaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChordService_GetReplica_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetReplicaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).GetReplica(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_GetReplica_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).GetReplica(ctx, req.(*GetReplicaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChordService_DeleteReplica_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteReplicaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).DeleteReplica(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_DeleteReplica_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).DeleteReplica(ctx, req.(*DeleteReplicaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChordService_ServiceDesc is the grpc.ServiceDesc for ChordService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -700,6 +814,18 @@ var ChordService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetFingerTable",
 			Handler:    _ChordService_GetFingerTable_Handler,
+		},
+		{
+			MethodName: "SetReplica",
+			Handler:    _ChordService_SetReplica_Handler,
+		},
+		{
+			MethodName: "GetReplica",
+			Handler:    _ChordService_GetReplica_Handler,
+		},
+		{
+			MethodName: "DeleteReplica",
+			Handler:    _ChordService_DeleteReplica_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
