@@ -46,18 +46,18 @@ export default function StatisticsDashboard({ nodes, isConnected }: StatisticsDa
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="flex items-center gap-4">
       {stats.map((stat, index) => (
         <div
           key={index}
-          className="bg-gray-800 rounded-lg p-6 flex items-center gap-4"
+          className="flex items-center gap-2.5 bg-gray-800/60 backdrop-blur-sm rounded-lg px-3.5 py-2 border border-gray-700/50"
         >
-          <div className={`${stat.bgColor} ${stat.color} p-3 rounded-lg`}>
-            <stat.icon className="w-6 h-6" />
+          <div className={`${stat.bgColor} ${stat.color} p-2 rounded-md`}>
+            <stat.icon className="w-4 h-4" />
           </div>
           <div>
-            <p className="text-gray-400 text-sm">{stat.label}</p>
-            <p className="text-white text-2xl font-bold mt-1">{stat.value}</p>
+            <p className="text-gray-400 text-[10px] uppercase tracking-wide">{stat.label}</p>
+            <p className={`${stat.color} text-base font-bold`}>{stat.value}</p>
           </div>
         </div>
       ))}

@@ -210,6 +210,26 @@ func (m *mockRemoteClient) DeleteReplica(ctx context.Context, address string, ke
 	return nil
 }
 
+func (m *mockRemoteClient) BulkStore(ctx context.Context, address string, items map[string][]byte) error {
+	return nil
+}
+
+func (m *mockRemoteClient) StoreReplica(ctx context.Context, address string, key string, value []byte) error {
+	return nil
+}
+
+func (m *mockRemoteClient) NotifyPredecessorLeaving(ctx context.Context, address string, newSuccessor *NodeAddress) error {
+	return nil
+}
+
+func (m *mockRemoteClient) NotifySuccessorLeaving(ctx context.Context, address string, newPredecessor *NodeAddress) error {
+	return nil
+}
+
+func (m *mockRemoteClient) NotifyNodeLeaving(ctx context.Context, address string, leavingNode *NodeAddress) error {
+	return nil
+}
+
 func TestChordNode_Join(t *testing.T) {
 	bootstrap := createTestNode(t, "127.0.0.1", 8080)
 	defer bootstrap.Shutdown()
@@ -784,7 +804,9 @@ func TestChordNode_FindFirstAliveSuccessor(t *testing.T) {
 		node.SetRemote(mockRemote)
 
 		result := node.findFirstAliveSuccessor()
-		assert.Nil(t, result) // Should skip self
+		// When only self is in list, function returns self (we're alone in ring)
+		assert.NotNil(t, result)
+		assert.True(t, result.Equals(node.Address()))
 	})
 
 	t.Run("without remote client returns first", func(t *testing.T) {
@@ -819,7 +841,7 @@ func TestChordNode_FindFirstAliveSuccessor(t *testing.T) {
 		assert.True(t, result.Equals(succ3), "Should return third successor")
 	})
 
-	t.Run("returns nil when no alive successors", func(t *testing.T) {
+	t.Run("returns self when no alive successors", func(t *testing.T) {
 		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 8081, 8081)
 		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 8082, 8082)
 
@@ -835,45 +857,56 @@ func TestChordNode_FindFirstAliveSuccessor(t *testing.T) {
 		node.SetRemote(mockRemote)
 
 		result := node.findFirstAliveSuccessor()
-		assert.Nil(t, result)
+		// When no successors are alive, node is alone - returns self
+		assert.NotNil(t, result)
+		assert.True(t, result.Equals(node.Address()))
 	})
 
 	t.Run("returns first alive when all alive", func(t *testing.T) {
-		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 8081, 8081)
-		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 8082, 8082)
+		// Create a fresh node without background tasks to avoid interference
+		testNode := createTestNode(t, "127.0.0.1", 9090)
+		defer testNode.Shutdown()
 
-		node.setSuccessorList([]*NodeAddress{succ1, succ2})
+		succ1 := NewNodeAddress(big.NewInt(100), "127.0.0.1", 9091, 9091)
+		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 9092, 9092)
 
 		// Mock where all are alive
 		mockRemote := &mockRemoteClientWithPing{
+			mockRemoteClient: mockRemoteClient{},
 			aliveAddresses: map[string]bool{
 				succ1.Address(): true,
 				succ2.Address(): true,
 			},
 		}
-		node.SetRemote(mockRemote)
+		testNode.SetRemote(mockRemote)
+		testNode.setSuccessorList([]*NodeAddress{succ1, succ2})
 
-		result := node.findFirstAliveSuccessor()
+		result := testNode.findFirstAliveSuccessor()
 		assert.NotNil(t, result)
 		assert.True(t, result.Equals(succ1), "Should return first alive successor")
 	})
 
 	t.Run("skips nil entries in list", func(t *testing.T) {
-		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 8082, 8082)
+		// Create a fresh node without background tasks to avoid interference
+		testNode := createTestNode(t, "127.0.0.1", 9100)
+		defer testNode.Shutdown()
 
-		// Create list with nil entry
-		node.successorMu.Lock()
-		node.successorList = []*NodeAddress{nil, succ2}
-		node.successorMu.Unlock()
+		succ2 := NewNodeAddress(big.NewInt(200), "127.0.0.1", 9102, 9102)
 
 		mockRemote := &mockRemoteClientWithPing{
+			mockRemoteClient: mockRemoteClient{},
 			aliveAddresses: map[string]bool{
 				succ2.Address(): true,
 			},
 		}
-		node.SetRemote(mockRemote)
+		testNode.SetRemote(mockRemote)
 
-		result := node.findFirstAliveSuccessor()
+		// Create list with nil entry
+		testNode.successorMu.Lock()
+		testNode.successorList = []*NodeAddress{nil, succ2}
+		testNode.successorMu.Unlock()
+
+		result := testNode.findFirstAliveSuccessor()
 		assert.NotNil(t, result)
 		assert.True(t, result.Equals(succ2))
 	})
@@ -899,7 +932,8 @@ type mockRemoteClientWithPing struct {
 }
 
 func (m *mockRemoteClientWithPing) Ping(address string, message string) (string, error) {
-	if m.aliveAddresses[address] {
+	alive, exists := m.aliveAddresses[address]
+	if exists && alive {
 		return "pong", nil
 	}
 	return "", assert.AnError

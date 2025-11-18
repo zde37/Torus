@@ -19,24 +19,28 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ChordService_FindSuccessor_FullMethodName          = "/protogen.ChordService/FindSuccessor"
-	ChordService_FindSuccessorWithPath_FullMethodName  = "/protogen.ChordService/FindSuccessorWithPath"
-	ChordService_GetPredecessor_FullMethodName         = "/protogen.ChordService/GetPredecessor"
-	ChordService_Notify_FullMethodName                 = "/protogen.ChordService/Notify"
-	ChordService_GetSuccessorList_FullMethodName       = "/protogen.ChordService/GetSuccessorList"
-	ChordService_Ping_FullMethodName                   = "/protogen.ChordService/Ping"
-	ChordService_GetNodeInfo_FullMethodName            = "/protogen.ChordService/GetNodeInfo"
-	ChordService_ClosestPrecedingFinger_FullMethodName = "/protogen.ChordService/ClosestPrecedingFinger"
-	ChordService_TransferKeys_FullMethodName           = "/protogen.ChordService/TransferKeys"
-	ChordService_DeleteTransferredKeys_FullMethodName  = "/protogen.ChordService/DeleteTransferredKeys"
-	ChordService_Get_FullMethodName                    = "/protogen.ChordService/Get"
-	ChordService_Set_FullMethodName                    = "/protogen.ChordService/Set"
-	ChordService_Delete_FullMethodName                 = "/protogen.ChordService/Delete"
-	ChordService_LookupPath_FullMethodName             = "/protogen.ChordService/LookupPath"
-	ChordService_GetFingerTable_FullMethodName         = "/protogen.ChordService/GetFingerTable"
-	ChordService_SetReplica_FullMethodName             = "/protogen.ChordService/SetReplica"
-	ChordService_GetReplica_FullMethodName             = "/protogen.ChordService/GetReplica"
-	ChordService_DeleteReplica_FullMethodName          = "/protogen.ChordService/DeleteReplica"
+	ChordService_FindSuccessor_FullMethodName            = "/protogen.ChordService/FindSuccessor"
+	ChordService_FindSuccessorWithPath_FullMethodName    = "/protogen.ChordService/FindSuccessorWithPath"
+	ChordService_GetPredecessor_FullMethodName           = "/protogen.ChordService/GetPredecessor"
+	ChordService_Notify_FullMethodName                   = "/protogen.ChordService/Notify"
+	ChordService_GetSuccessorList_FullMethodName         = "/protogen.ChordService/GetSuccessorList"
+	ChordService_Ping_FullMethodName                     = "/protogen.ChordService/Ping"
+	ChordService_GetNodeInfo_FullMethodName              = "/protogen.ChordService/GetNodeInfo"
+	ChordService_ClosestPrecedingFinger_FullMethodName   = "/protogen.ChordService/ClosestPrecedingFinger"
+	ChordService_TransferKeys_FullMethodName             = "/protogen.ChordService/TransferKeys"
+	ChordService_DeleteTransferredKeys_FullMethodName    = "/protogen.ChordService/DeleteTransferredKeys"
+	ChordService_Get_FullMethodName                      = "/protogen.ChordService/Get"
+	ChordService_Set_FullMethodName                      = "/protogen.ChordService/Set"
+	ChordService_Delete_FullMethodName                   = "/protogen.ChordService/Delete"
+	ChordService_LookupPath_FullMethodName               = "/protogen.ChordService/LookupPath"
+	ChordService_GetFingerTable_FullMethodName           = "/protogen.ChordService/GetFingerTable"
+	ChordService_SetReplica_FullMethodName               = "/protogen.ChordService/SetReplica"
+	ChordService_GetReplica_FullMethodName               = "/protogen.ChordService/GetReplica"
+	ChordService_DeleteReplica_FullMethodName            = "/protogen.ChordService/DeleteReplica"
+	ChordService_BulkStore_FullMethodName                = "/protogen.ChordService/BulkStore"
+	ChordService_NotifyPredecessorLeaving_FullMethodName = "/protogen.ChordService/NotifyPredecessorLeaving"
+	ChordService_NotifySuccessorLeaving_FullMethodName   = "/protogen.ChordService/NotifySuccessorLeaving"
+	ChordService_NotifyNodeLeaving_FullMethodName        = "/protogen.ChordService/NotifyNodeLeaving"
 )
 
 // ChordServiceClient is the client API for ChordService service.
@@ -94,6 +98,18 @@ type ChordServiceClient interface {
 	// DeleteReplica removes a replica of a key.
 	// Used to maintain consistency when deleting keys.
 	DeleteReplica(ctx context.Context, in *DeleteReplicaRequest, opts ...grpc.CallOption) (*DeleteReplicaResponse, error)
+	// BulkStore stores multiple key-value pairs efficiently.
+	// Used during node leave for bulk key transfer.
+	BulkStore(ctx context.Context, in *BulkStoreRequest, opts ...grpc.CallOption) (*BulkStoreResponse, error)
+	// NotifyPredecessorLeaving notifies predecessor about node leaving.
+	// Used during graceful shutdown to update ring topology.
+	NotifyPredecessorLeaving(ctx context.Context, in *NotifyPredecessorLeavingRequest, opts ...grpc.CallOption) (*NotifyPredecessorLeavingResponse, error)
+	// NotifySuccessorLeaving notifies successor about node leaving.
+	// Used during graceful shutdown to update ring topology.
+	NotifySuccessorLeaving(ctx context.Context, in *NotifySuccessorLeavingRequest, opts ...grpc.CallOption) (*NotifySuccessorLeavingResponse, error)
+	// NotifyNodeLeaving notifies any node about another node leaving.
+	// Used to inform successor list members during graceful shutdown.
+	NotifyNodeLeaving(ctx context.Context, in *NotifyNodeLeavingRequest, opts ...grpc.CallOption) (*NotifyNodeLeavingResponse, error)
 }
 
 type chordServiceClient struct {
@@ -284,6 +300,46 @@ func (c *chordServiceClient) DeleteReplica(ctx context.Context, in *DeleteReplic
 	return out, nil
 }
 
+func (c *chordServiceClient) BulkStore(ctx context.Context, in *BulkStoreRequest, opts ...grpc.CallOption) (*BulkStoreResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BulkStoreResponse)
+	err := c.cc.Invoke(ctx, ChordService_BulkStore_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chordServiceClient) NotifyPredecessorLeaving(ctx context.Context, in *NotifyPredecessorLeavingRequest, opts ...grpc.CallOption) (*NotifyPredecessorLeavingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotifyPredecessorLeavingResponse)
+	err := c.cc.Invoke(ctx, ChordService_NotifyPredecessorLeaving_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chordServiceClient) NotifySuccessorLeaving(ctx context.Context, in *NotifySuccessorLeavingRequest, opts ...grpc.CallOption) (*NotifySuccessorLeavingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotifySuccessorLeavingResponse)
+	err := c.cc.Invoke(ctx, ChordService_NotifySuccessorLeaving_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *chordServiceClient) NotifyNodeLeaving(ctx context.Context, in *NotifyNodeLeavingRequest, opts ...grpc.CallOption) (*NotifyNodeLeavingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NotifyNodeLeavingResponse)
+	err := c.cc.Invoke(ctx, ChordService_NotifyNodeLeaving_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ChordServiceServer is the server API for ChordService service.
 // All implementations must embed UnimplementedChordServiceServer
 // for forward compatibility.
@@ -339,6 +395,18 @@ type ChordServiceServer interface {
 	// DeleteReplica removes a replica of a key.
 	// Used to maintain consistency when deleting keys.
 	DeleteReplica(context.Context, *DeleteReplicaRequest) (*DeleteReplicaResponse, error)
+	// BulkStore stores multiple key-value pairs efficiently.
+	// Used during node leave for bulk key transfer.
+	BulkStore(context.Context, *BulkStoreRequest) (*BulkStoreResponse, error)
+	// NotifyPredecessorLeaving notifies predecessor about node leaving.
+	// Used during graceful shutdown to update ring topology.
+	NotifyPredecessorLeaving(context.Context, *NotifyPredecessorLeavingRequest) (*NotifyPredecessorLeavingResponse, error)
+	// NotifySuccessorLeaving notifies successor about node leaving.
+	// Used during graceful shutdown to update ring topology.
+	NotifySuccessorLeaving(context.Context, *NotifySuccessorLeavingRequest) (*NotifySuccessorLeavingResponse, error)
+	// NotifyNodeLeaving notifies any node about another node leaving.
+	// Used to inform successor list members during graceful shutdown.
+	NotifyNodeLeaving(context.Context, *NotifyNodeLeavingRequest) (*NotifyNodeLeavingResponse, error)
 	mustEmbedUnimplementedChordServiceServer()
 }
 
@@ -402,6 +470,18 @@ func (UnimplementedChordServiceServer) GetReplica(context.Context, *GetReplicaRe
 }
 func (UnimplementedChordServiceServer) DeleteReplica(context.Context, *DeleteReplicaRequest) (*DeleteReplicaResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteReplica not implemented")
+}
+func (UnimplementedChordServiceServer) BulkStore(context.Context, *BulkStoreRequest) (*BulkStoreResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BulkStore not implemented")
+}
+func (UnimplementedChordServiceServer) NotifyPredecessorLeaving(context.Context, *NotifyPredecessorLeavingRequest) (*NotifyPredecessorLeavingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NotifyPredecessorLeaving not implemented")
+}
+func (UnimplementedChordServiceServer) NotifySuccessorLeaving(context.Context, *NotifySuccessorLeavingRequest) (*NotifySuccessorLeavingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NotifySuccessorLeaving not implemented")
+}
+func (UnimplementedChordServiceServer) NotifyNodeLeaving(context.Context, *NotifyNodeLeavingRequest) (*NotifyNodeLeavingResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method NotifyNodeLeaving not implemented")
 }
 func (UnimplementedChordServiceServer) mustEmbedUnimplementedChordServiceServer() {}
 func (UnimplementedChordServiceServer) testEmbeddedByValue()                      {}
@@ -748,6 +828,78 @@ func _ChordService_DeleteReplica_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ChordService_BulkStore_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BulkStoreRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).BulkStore(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_BulkStore_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).BulkStore(ctx, req.(*BulkStoreRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChordService_NotifyPredecessorLeaving_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NotifyPredecessorLeavingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).NotifyPredecessorLeaving(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_NotifyPredecessorLeaving_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).NotifyPredecessorLeaving(ctx, req.(*NotifyPredecessorLeavingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChordService_NotifySuccessorLeaving_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NotifySuccessorLeavingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).NotifySuccessorLeaving(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_NotifySuccessorLeaving_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).NotifySuccessorLeaving(ctx, req.(*NotifySuccessorLeavingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ChordService_NotifyNodeLeaving_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NotifyNodeLeavingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ChordServiceServer).NotifyNodeLeaving(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ChordService_NotifyNodeLeaving_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ChordServiceServer).NotifyNodeLeaving(ctx, req.(*NotifyNodeLeavingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ChordService_ServiceDesc is the grpc.ServiceDesc for ChordService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -826,6 +978,22 @@ var ChordService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteReplica",
 			Handler:    _ChordService_DeleteReplica_Handler,
+		},
+		{
+			MethodName: "BulkStore",
+			Handler:    _ChordService_BulkStore_Handler,
+		},
+		{
+			MethodName: "NotifyPredecessorLeaving",
+			Handler:    _ChordService_NotifyPredecessorLeaving_Handler,
+		},
+		{
+			MethodName: "NotifySuccessorLeaving",
+			Handler:    _ChordService_NotifySuccessorLeaving_Handler,
+		},
+		{
+			MethodName: "NotifyNodeLeaving",
+			Handler:    _ChordService_NotifyNodeLeaving_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

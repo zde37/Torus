@@ -355,7 +355,9 @@ func (c *GRPCClient) Set(ctx context.Context, address string, key string, value 
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
 		defer cancel()
 	}
-	// TODO: add option for users to set TTL for keys
+	// Note: TTL support is available in the proto definition (ttl_seconds field)
+	// but not exposed in the current interface to keep it simple.
+	// Add ttl_seconds to the request if TTL support is needed.
 	req := &pb.SetRequest{
 		Key:   key,
 		Value: value,
@@ -608,5 +610,189 @@ func (c *GRPCClient) Close() error {
 	}
 
 	c.connections = make(map[string]*grpc.ClientConn)
+	return nil
+}
+
+// BulkStore stores multiple key-value pairs on a remote node.
+func (c *GRPCClient) BulkStore(ctx context.Context, address string, items map[string][]byte) error {
+	conn, err := c.getConnection(address)
+	if err != nil {
+		return err
+	}
+
+	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
+	// Use the provided context with a timeout fallback
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
+	req := &pb.BulkStoreRequest{
+		Items: items,
+	}
+
+	resp, err := client.BulkStore(ctx, req)
+	if err != nil {
+		return fmt.Errorf("BulkStore RPC failed: %w", err)
+	}
+
+	if !resp.Success {
+		if resp.Error != "" {
+			return fmt.Errorf("bulk store failed: %s", resp.Error)
+		}
+		return fmt.Errorf("bulk store failed on remote node")
+	}
+
+	c.logger.Debug().
+		Int32("count", resp.Count).
+		Str("address", address).
+		Msg("Bulk stored items on remote node")
+
+	return nil
+}
+
+// StoreReplica stores a replica of a key-value pair on a remote node.
+func (c *GRPCClient) StoreReplica(ctx context.Context, address string, key string, value []byte) error {
+	// Use SetReplica with no TTL for replica storage
+	return c.SetReplica(ctx, address, key, value, 0)
+}
+
+// NotifyPredecessorLeaving notifies a predecessor that we're leaving.
+func (c *GRPCClient) NotifyPredecessorLeaving(ctx context.Context, address string, newSuccessor *chord.NodeAddress) error {
+	conn, err := c.getConnection(address)
+	if err != nil {
+		return err
+	}
+
+	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
+	// Use the provided context with a timeout fallback
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
+	req := &pb.NotifyPredecessorLeavingRequest{
+		NewSuccessor: &pb.Node{
+			Id:       newSuccessor.ID.Bytes(),
+			Host:     newSuccessor.Host,
+			Port:     int32(newSuccessor.Port),
+			HttpPort: int32(newSuccessor.HTTPPort),
+		},
+	}
+
+	resp, err := client.NotifyPredecessorLeaving(ctx, req)
+	if err != nil {
+		return fmt.Errorf("NotifyPredecessorLeaving RPC failed: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("predecessor failed to process leaving notification")
+	}
+
+	c.logger.Debug().
+		Str("address", address).
+		Str("new_successor", newSuccessor.Address()).
+		Msg("Notified predecessor about leaving")
+
+	return nil
+}
+
+// NotifySuccessorLeaving notifies a successor that we're leaving.
+func (c *GRPCClient) NotifySuccessorLeaving(ctx context.Context, address string, newPredecessor *chord.NodeAddress) error {
+	conn, err := c.getConnection(address)
+	if err != nil {
+		return err
+	}
+
+	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
+	// Use the provided context with a timeout fallback
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
+	req := &pb.NotifySuccessorLeavingRequest{
+		NewPredecessor: &pb.Node{
+			Id:       newPredecessor.ID.Bytes(),
+			Host:     newPredecessor.Host,
+			Port:     int32(newPredecessor.Port),
+			HttpPort: int32(newPredecessor.HTTPPort),
+		},
+	}
+
+	resp, err := client.NotifySuccessorLeaving(ctx, req)
+	if err != nil {
+		return fmt.Errorf("NotifySuccessorLeaving RPC failed: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("successor failed to process leaving notification")
+	}
+
+	c.logger.Debug().
+		Str("address", address).
+		Str("new_predecessor", newPredecessor.Address()).
+		Msg("Notified successor about leaving")
+
+	return nil
+}
+
+// NotifyNodeLeaving notifies a node in the successor list about our departure.
+func (c *GRPCClient) NotifyNodeLeaving(ctx context.Context, address string, leavingNode *chord.NodeAddress) error {
+	conn, err := c.getConnection(address)
+	if err != nil {
+		return err
+	}
+
+	client := pb.NewChordServiceClient(conn)
+
+	// Add auth metadata
+	ctx = c.withAuthMetadata(ctx)
+
+	// Use the provided context with a timeout fallback
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.timeout)
+		defer cancel()
+	}
+
+	req := &pb.NotifyNodeLeavingRequest{
+		LeavingNode: &pb.Node{
+			Id:       leavingNode.ID.Bytes(),
+			Host:     leavingNode.Host,
+			Port:     int32(leavingNode.Port),
+			HttpPort: int32(leavingNode.HTTPPort),
+		},
+	}
+
+	resp, err := client.NotifyNodeLeaving(ctx, req)
+	if err != nil {
+		return fmt.Errorf("NotifyNodeLeaving RPC failed: %w", err)
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("node failed to process leaving notification")
+	}
+
+	c.logger.Debug().
+		Str("address", address).
+		Str("leaving_node", leavingNode.Address()).
+		Msg("Notified node about departure")
+
 	return nil
 }

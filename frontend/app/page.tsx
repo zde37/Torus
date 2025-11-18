@@ -24,6 +24,7 @@ export default function Home() {
   const [error, setError] = useState<string>('');
   const [lookupPath, setLookupPath] = useState<ChordNode[] | null>(null);
   const [lookupResponsibleNode, setLookupResponsibleNode] = useState<ChordNode | null>(null);
+  const [activeTab, setActiveTab] = useState<'details' | 'operations'>('details');
 
   useEffect(() => {
     const wsClient = getWebSocketClient();
@@ -198,79 +199,110 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-950 text-white">
-      {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 px-8 py-6">
-        <div className="max-w-[1800px] mx-auto">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
-            Torus
-          </h1>
-          <p className="text-gray-400 mt-1">
-            Interactive Chord Distributed Hash Table Visualization
-          </p>
+    <main className="h-screen bg-gray-950 text-white flex flex-col">
+      {/* Header with inline stats */}
+      <header className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-800 px-6 py-4 flex-shrink-0">
+        <div className="max-w-[1900px] mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent">
+              Torus
+            </h1>
+            <p className="text-gray-500 text-xs mt-0.5">
+              Interactive Chord DHT Visualization
+            </p>
+          </div>
+
+          {/* Compact inline stats */}
+          <StatisticsDashboard nodes={nodes} isConnected={isConnected} />
         </div>
       </header>
 
-      {/* Error Message */}
+      {/* Error Message - Compact banner */}
       {error && (
-        <div className="bg-red-900/30 border border-red-500/50 text-red-200 px-8 py-4 mx-8 mt-6 rounded-lg">
-          <p className="font-semibold">Connection Error</p>
-          <p className="text-sm mt-1">{error}</p>
+        <div className="bg-red-900/20 border-l-4 border-red-500 text-red-200 px-6 py-3 text-sm flex-shrink-0 flex items-center gap-2">
+          <span className="text-red-400">⚠</span>
+          <span>{error}</span>
         </div>
       )}
 
-      {/* Main Content */}
-      <div className="max-w-[1800px] mx-auto px-8 py-8 space-y-6">
-        {/* Statistics */}
-        <StatisticsDashboard nodes={nodes} isConnected={isConnected} />
-
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Ring Visualization - Takes 2 columns */}
-          <div className="lg:col-span-2 bg-gray-900 rounded-lg p-6 min-h-[800px]">
-            <h2 className="text-xl font-bold mb-4">Chord Ring</h2>
-            {nodes.length > 0 ? (
-              <RingVisualization
-                nodes={nodes}
-                onNodeClick={handleNodeClick}
-                selectedNode={selectedNode}
-                lookupPath={lookupPath}
-                lookupResponsibleNode={lookupResponsibleNode}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-[700px] text-gray-400">
-                <p>Loading ring topology...</p>
-              </div>
-            )}
-          </div>
-
-          {/* Right Sidebar */}
-          <div className="space-y-6">
-            {/* Node Details */}
-            <div className="min-h-[400px]">
-              <NodeDetailsPanel node={selectedNode} />
+      {/* Main Content - fills remaining space */}
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full max-w-[1900px] mx-auto px-6 py-5">
+          <div className="h-full grid grid-cols-1 lg:grid-cols-[1fr,420px] gap-5">
+            {/* Ring Visualization */}
+            <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 p-5 h-full flex flex-col">
+              <h2 className="text-lg font-semibold mb-4 text-gray-200">Chord Ring</h2>
+              {nodes.length > 0 ? (
+                <div className="flex-1 min-h-0">
+                  <RingVisualization
+                    nodes={nodes}
+                    onNodeClick={handleNodeClick}
+                    selectedNode={selectedNode}
+                    lookupPath={lookupPath}
+                    lookupResponsibleNode={lookupResponsibleNode}
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-gray-500">
+                  <div className="text-center">
+                    <div className="animate-pulse mb-2">⚡</div>
+                    <p>Loading ring topology...</p>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Demo Operations */}
-            <DemoOperations
-              nodes={nodes}
-              onLookupSimulation={handleLookupSimulation}
-              onOperationComplete={handleOperationComplete}
-            />
+            {/* Right Sidebar with Tabs */}
+            <div className="bg-gray-900/50 backdrop-blur-sm rounded-xl border border-gray-800 h-full flex flex-col overflow-hidden">
+              {/* Tab Navigation */}
+              <div className="flex border-b border-gray-800 flex-shrink-0">
+                <button
+                  onClick={() => setActiveTab('details')}
+                  className={`flex-1 py-3.5 px-4 text-sm font-medium transition-all duration-200 ${
+                    activeTab === 'details'
+                      ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-800/50'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
+                  }`}
+                >
+                  📊 Node Details
+                </button>
+                <button
+                  onClick={() => setActiveTab('operations')}
+                  className={`flex-1 py-3.5 px-4 text-sm font-medium transition-all duration-200 ${
+                    activeTab === 'operations'
+                      ? 'text-green-400 border-b-2 border-green-400 bg-gray-800/50'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/30'
+                  }`}
+                >
+                  ⚙️ Operations
+                </button>
+              </div>
+
+              {/* Tab Content with smooth transition */}
+              <div className="flex-1 overflow-hidden">
+                <div className={`h-full transition-opacity duration-200 ${activeTab === 'details' ? 'opacity-100' : 'opacity-0 absolute'}`}>
+                  {activeTab === 'details' && <NodeDetailsPanel node={selectedNode} />}
+                </div>
+                <div className={`h-full transition-opacity duration-200 ${activeTab === 'operations' ? 'opacity-100' : 'opacity-0 absolute'}`}>
+                  {activeTab === 'operations' && (
+                    <div className="h-full overflow-y-auto p-5">
+                      <DemoOperations
+                        nodes={nodes}
+                        onLookupSimulation={handleLookupSimulation}
+                        onOperationComplete={handleOperationComplete}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="bg-gray-900 border-t border-gray-800 px-8 py-6 mt-12">
-        <div className="max-w-[1800px] mx-auto text-center text-gray-400 text-sm">
-          <p>
-            Built with Next.js, D3.js, and Go • View-only interactive dashboard
-          </p>
-          <p className="mt-1">
-            Chord DHT implementation following the original MIT paper
-          </p>
-        </div>
+      {/* Minimal Footer */}
+      <footer className="bg-gray-900/30 border-t border-gray-800 px-6 py-2.5 text-center text-gray-500 text-xs flex-shrink-0">
+        Built with Next.js, D3.js & Go • Chord DHT (MIT Paper)
       </footer>
     </main>
   );

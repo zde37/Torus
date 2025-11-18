@@ -427,3 +427,39 @@ func (ms *MemoryStorage) SetMultiple(ctx context.Context, items map[string][]byt
 
 	return nil
 }
+
+// ListKeysWithPrefix returns all keys that start with the given prefix.
+// This is useful for finding all replica keys or other categorized keys.
+func (ms *MemoryStorage) ListKeysWithPrefix(ctx context.Context, prefix string) ([]string, error) {
+	// Check if context is already cancelled
+	select {
+	case <-ctx.Done():
+		return nil, ErrContextCanceled
+	default:
+	}
+
+	// Check if storage is closed
+	if ms.closed.Load() {
+		return nil, ErrStorageUnavailable
+	}
+
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	var keys []string
+	now := time.Now()
+
+	for key, entry := range ms.data {
+		// Skip expired entries
+		if entry.expiresAt.After(time.Time{}) && entry.expiresAt.Before(now) {
+			continue
+		}
+
+		// Check if key starts with prefix
+		if len(prefix) == 0 || (len(key) >= len(prefix) && key[:len(prefix)] == prefix) {
+			keys = append(keys, key)
+		}
+	}
+
+	return keys, nil
+}

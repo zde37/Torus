@@ -183,9 +183,12 @@ func (s *GRPCServer) GetSuccessorList(ctx context.Context, req *pb.GetSuccessorL
 
 	successors := s.node.GetSuccessorList()
 
+	// Filter out dead nodes before sending to frontend
+	aliveSuccessors := s.filterAliveNodes(successors)
+
 	// Convert to protobuf
-	pbSuccessors := make([]*pb.Node, len(successors))
-	for i, succ := range successors {
+	pbSuccessors := make([]*pb.Node, len(aliveSuccessors))
+	for i, succ := range aliveSuccessors {
 		pbSuccessors[i] = nodeAddressToProto(succ)
 	}
 
@@ -217,8 +220,16 @@ func (s *GRPCServer) GetNodeInfo(ctx context.Context, req *pb.GetNodeInfoRequest
 		keyCount = 0 // Default to 0 on error
 	}
 
+	// Get replica count
+	replicaCount, err := s.node.GetReplicaCount(ctx)
+	if err != nil {
+		s.logger.Warn().Err(err).Msg("Failed to get replica count")
+		replicaCount = 0 // Default to 0 on error
+	}
+
 	nodeProto := nodeAddressToProto(nodeAddr)
 	nodeProto.KeyCount = int32(keyCount)
+	nodeProto.ReplicaCount = int32(replicaCount)
 
 	return &pb.GetNodeInfoResponse{
 		Node: nodeProto,
@@ -411,14 +422,20 @@ func (s *GRPCServer) GetFingerTable(ctx context.Context, req *pb.GetFingerTableR
 
 	fingerTable := s.node.GetFingerTable()
 
-	// Convert to protobuf
-	pbEntries := make([]*pb.FingerTableEntry, len(fingerTable))
+	// Convert to protobuf, filtering out entries with dead nodes
+	pbEntries := make([]*pb.FingerTableEntry, 0, len(fingerTable))
 	for i, entry := range fingerTable {
-		pbEntries[i] = &pb.FingerTableEntry{
+		// Check if the node is alive (or nil)
+		if entry.Node != nil && !s.node.IsNodeAlive(entry.Node) {
+			// Skip dead nodes in finger table
+			continue
+		}
+
+		pbEntries = append(pbEntries, &pb.FingerTableEntry{
 			Start: entry.Start.Bytes(),
 			Node:  nodeAddressToProto(entry.Node),
 			Index: int32(i),
-		}
+		})
 	}
 
 	return &pb.GetFingerTableResponse{
@@ -482,6 +499,114 @@ func (s *GRPCServer) DeleteReplica(ctx context.Context, req *pb.DeleteReplicaReq
 	}, nil
 }
 
+// BulkStore stores multiple key-value pairs efficiently.
+func (s *GRPCServer) BulkStore(ctx context.Context, req *pb.BulkStoreRequest) (*pb.BulkStoreResponse, error) {
+	s.logger.Debug().Int("item_count", len(req.Items)).Msg("BulkStore called")
+
+	if len(req.Items) == 0 {
+		return &pb.BulkStoreResponse{
+			Success: true,
+			Count:   0,
+		}, nil
+	}
+
+	// Store each item
+	stored := int32(0)
+	for key, value := range req.Items {
+		// Store with the raw key (it's already hashed from the sender)
+		if err := s.node.SetRaw(ctx, key, value); err != nil {
+			s.logger.Error().Err(err).Str("key", key).Msg("Failed to store item in bulk operation")
+			// Continue with other items even if one fails
+		} else {
+			stored++
+		}
+	}
+
+	return &pb.BulkStoreResponse{
+		Success: stored > 0,
+		Count:   stored,
+		Error:   "",
+	}, nil
+}
+
+// NotifyPredecessorLeaving handles notification that our successor is leaving.
+func (s *GRPCServer) NotifyPredecessorLeaving(ctx context.Context, req *pb.NotifyPredecessorLeavingRequest) (*pb.NotifyPredecessorLeavingResponse, error) {
+	s.logger.Debug().Msg("NotifyPredecessorLeaving called")
+
+	if req.NewSuccessor == nil {
+		return nil, fmt.Errorf("new successor cannot be nil")
+	}
+
+	// Convert protobuf node to NodeAddress
+	newSuccessor := protoToNodeAddress(req.NewSuccessor)
+	if newSuccessor == nil {
+		return nil, fmt.Errorf("invalid new successor node")
+	}
+
+	// Update our successor to the leaving node's successor
+	s.node.SetSuccessor(newSuccessor)
+
+	s.logger.Info().
+		Str("new_successor", newSuccessor.Address()).
+		Msg("Updated successor due to predecessor leaving")
+
+	return &pb.NotifyPredecessorLeavingResponse{
+		Success: true,
+	}, nil
+}
+
+// NotifySuccessorLeaving handles notification that our predecessor is leaving.
+func (s *GRPCServer) NotifySuccessorLeaving(ctx context.Context, req *pb.NotifySuccessorLeavingRequest) (*pb.NotifySuccessorLeavingResponse, error) {
+	s.logger.Debug().Msg("NotifySuccessorLeaving called")
+
+	if req.NewPredecessor == nil {
+		return nil, fmt.Errorf("new predecessor cannot be nil")
+	}
+
+	// Convert protobuf node to NodeAddress
+	newPredecessor := protoToNodeAddress(req.NewPredecessor)
+	if newPredecessor == nil {
+		return nil, fmt.Errorf("invalid new predecessor node")
+	}
+
+	// Update our predecessor to the leaving node's predecessor
+	s.node.SetPredecessor(newPredecessor)
+
+	s.logger.Info().
+		Str("new_predecessor", newPredecessor.Address()).
+		Msg("Updated predecessor due to successor leaving")
+
+	return &pb.NotifySuccessorLeavingResponse{
+		Success: true,
+	}, nil
+}
+
+// NotifyNodeLeaving handles notification that a node in the ring is leaving.
+func (s *GRPCServer) NotifyNodeLeaving(ctx context.Context, req *pb.NotifyNodeLeavingRequest) (*pb.NotifyNodeLeavingResponse, error) {
+	s.logger.Debug().Msg("NotifyNodeLeaving called")
+
+	if req.LeavingNode == nil {
+		return nil, fmt.Errorf("leaving node cannot be nil")
+	}
+
+	// Convert protobuf node to NodeAddress
+	leavingNode := protoToNodeAddress(req.LeavingNode)
+	if leavingNode == nil {
+		return nil, fmt.Errorf("invalid leaving node")
+	}
+
+	// Remove the leaving node from our successor list if present
+	s.node.RemoveFromSuccessorList(leavingNode)
+
+	s.logger.Info().
+		Str("leaving_node", leavingNode.Address()).
+		Msg("Processed node leaving notification")
+
+	return &pb.NotifyNodeLeavingResponse{
+		Success: true,
+	}, nil
+}
+
 // Helper functions for type conversion
 
 // nodeAddressToProto converts a NodeAddress to protobuf Node.
@@ -506,4 +631,26 @@ func protoToNodeAddress(node *pb.Node) *chord.NodeAddress {
 
 	id := new(big.Int).SetBytes(node.Id)
 	return chord.NewNodeAddress(id, node.Host, int(node.Port), int(node.HttpPort))
+}
+
+// filterAliveNodes filters a list of NodeAddresses to only include alive nodes.
+// This is used to clean dead nodes from successor lists before sending to frontend.
+func (s *GRPCServer) filterAliveNodes(nodes []*chord.NodeAddress) []*chord.NodeAddress {
+	if len(nodes) == 0 {
+		return nodes
+	}
+
+	alive := make([]*chord.NodeAddress, 0, len(nodes))
+	for _, node := range nodes {
+		if node == nil {
+			continue
+		}
+
+		// Check if node is alive
+		if s.node.IsNodeAlive(node) {
+			alive = append(alive, node)
+		}
+	}
+
+	return alive
 }

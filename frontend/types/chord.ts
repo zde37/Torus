@@ -9,6 +9,7 @@ export interface ChordNode {
   predecessor?: ChordNode;
   fingerTable?: FingerEntry[];
   keyCount?: number;
+  replicaCount?: number;
 }
 
 // Finger table entry

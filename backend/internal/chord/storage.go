@@ -11,10 +11,15 @@ import (
 	"github.com/zde37/torus/pkg"
 )
 
-// Internal storage keys for Chord metadata
 const (
+	// Internal storage keys for Chord metadata
 	keyPredecessor   = "__chord_predecessor__"
 	keySuccessorList = "__chord_successor_list__"
+
+	// Prefixes for internal storage
+	chordKeyPrefix   = "__chord_"
+	fingerKeyPrefix  = "__chord_finger_"
+	replicaKeyPrefix = "__replica_"
 )
 
 // ChordStorage provides a Chord-specific wrapper around the generic MemoryStorage.
@@ -60,27 +65,46 @@ func (cs *ChordStorage) Delete(ctx context.Context, key string) error {
 // SetReplica stores a replica of a key with the given value and TTL.
 // Replicas are stored with a special prefix to distinguish them from primary keys.
 func (cs *ChordStorage) SetReplica(ctx context.Context, key string, value []byte, ttl time.Duration) error {
-	replicaKey := cs.makeReplicaKey(key)
+	// Store with original key name (not hashed) so we can identify it later
+	replicaKey := replicaKeyPrefix + key
 	return cs.storage.Set(ctx, replicaKey, value, ttl)
 }
 
 // GetReplica retrieves a replica value by key.
 // Returns the value if found, nil if not found, and error on failures.
 func (cs *ChordStorage) GetReplica(ctx context.Context, key string) ([]byte, error) {
-	replicaKey := cs.makeReplicaKey(key)
+	// Retrieve using original key name (not hashed)
+	replicaKey := replicaKeyPrefix + key
 	return cs.storage.Get(ctx, replicaKey)
 }
 
 // DeleteReplica removes a replica of a key.
 func (cs *ChordStorage) DeleteReplica(ctx context.Context, key string) error {
-	replicaKey := cs.makeReplicaKey(key)
+	// Delete using original key name (not hashed)
+	replicaKey := replicaKeyPrefix + key
 	return cs.storage.Delete(ctx, replicaKey)
 }
 
-// makeReplicaKey creates a replica key by prefixing the hashed key with "__replica_".
-func (cs *ChordStorage) makeReplicaKey(key string) string {
-	hashedKey := cs.hashKey(key)
-	return "__replica_" + hashedKey
+// GetAllReplicaKeys returns all replica keys stored in this node.
+// These are the keys where this node is acting as a backup for other nodes.
+func (cs *ChordStorage) GetAllReplicaKeys(ctx context.Context) ([]string, error) {
+	// Get all keys with the replica prefix
+	replicaKeys, err := cs.storage.ListKeysWithPrefix(ctx, replicaKeyPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list replica keys: %w", err)
+	}
+
+	// Strip the prefix to get original key names
+	var originalKeys []string
+	for _, rKey := range replicaKeys {
+		// Remove replica prefix to get the original key name
+		if len(rKey) > len(replicaKeyPrefix) {
+			originalKey := rKey[len(replicaKeyPrefix):]
+			originalKeys = append(originalKeys, originalKey)
+		}
+	}
+
+	return originalKeys, nil
 }
 
 // GetRaw retrieves a value by raw key (without hashing).
@@ -169,7 +193,7 @@ func (cs *ChordStorage) SetSuccessorList(ctx context.Context, successors []*Node
 // GetFingerEntry retrieves a specific finger table entry.
 // Returns nil if the entry doesn't exist.
 func (cs *ChordStorage) GetFingerEntry(ctx context.Context, index int) (*FingerEntry, error) {
-	key := fmt.Sprintf("__chord_finger_%d__", index)
+	key := fmt.Sprintf("%s%d", fingerKeyPrefix, index)
 	data, err := cs.GetRaw(ctx, key)
 	if err != nil {
 		if err == pkg.ErrKeyNotFound {
@@ -188,7 +212,7 @@ func (cs *ChordStorage) GetFingerEntry(ctx context.Context, index int) (*FingerE
 
 // SetFingerEntry stores a finger table entry.
 func (cs *ChordStorage) SetFingerEntry(ctx context.Context, index int, entry *FingerEntry) error {
-	key := fmt.Sprintf("__chord_finger_%d__", index)
+	key := fmt.Sprintf("%s%d", fingerKeyPrefix, index)
 
 	if entry == nil {
 		return cs.DeleteRaw(ctx, key)
@@ -289,8 +313,14 @@ func (cs *ChordStorage) GetStats() pkg.Stats {
 	return cs.storage.GetStats()
 }
 
-// CountUserKeys returns the number of user keys (excluding Chord metadata).
-// Chord metadata keys are prefixed with "__chord_" and should not be counted.
+// GetAll returns all key-value pairs in storage (excluding expired entries).
+// This is used during node leave to transfer all data to other nodes.
+func (cs *ChordStorage) GetAll(ctx context.Context) (map[string][]byte, error) {
+	return cs.storage.GetAll(ctx)
+}
+
+// CountUserKeys returns the number of user keys (excluding Chord metadata and replicas).
+// Chord metadata keys are prefixed with 'chordKeyPrefix' and replica keys with 'replicaKeyPrefix'.
 func (cs *ChordStorage) CountUserKeys(ctx context.Context) (int, error) {
 	allKeys, err := cs.storage.GetAll(ctx)
 	if err != nil {
@@ -300,13 +330,36 @@ func (cs *ChordStorage) CountUserKeys(ctx context.Context) (int, error) {
 	userKeyCount := 0
 	for key := range allKeys {
 		// Skip Chord metadata keys
-		if len(key) >= 8 && key[:8] == "__chord_" {
+		if len(key) >= len(chordKeyPrefix) && key[:len(chordKeyPrefix)] == chordKeyPrefix {
+			continue
+		}
+		// Skip replica keys
+		if len(key) >= len(replicaKeyPrefix) && key[:len(replicaKeyPrefix)] == replicaKeyPrefix {
 			continue
 		}
 		userKeyCount++
 	}
 
 	return userKeyCount, nil
+}
+
+// CountReplicaKeys returns the number of replica keys stored on this node.
+// Replica keys are prefixed with 'replicaKeyPrefix'.
+func (cs *ChordStorage) CountReplicaKeys(ctx context.Context) (int, error) {
+	allKeys, err := cs.storage.GetAll(ctx)
+	if err != nil {
+		return 0, err
+	}
+
+	replicaKeyCount := 0
+	for key := range allKeys {
+		// Count replica keys
+		if len(key) >= len(replicaKeyPrefix) && key[:len(replicaKeyPrefix)] == replicaKeyPrefix {
+			replicaKeyCount++
+		}
+	}
+
+	return replicaKeyCount, nil
 }
 
 // hashKey converts a string key to a hex string representation of its Chord ID.
@@ -332,10 +385,12 @@ func IsResponsibleFor(nodeID, predecessorID, keyID *big.Int) bool {
 	return hash.InRange(keyID, predecessorID, nodeID)
 }
 
-// GetKeysInRange returns all keys whose hash falls in the range (start, end].
+// GetKeysInRange returns all PRIMARY keys whose hash falls in the range (start, end].
 // This is used for data migration when nodes join or leave.
-// Excludes Chord metadata keys (those starting with "__chord_") to prevent
-// corruption of node state during migration.
+// Excludes:
+// - Chord metadata keys (those starting with 'chordKeyPrefix') to prevent corruption of node state
+// - Replica keys (those starting with 'replicaKeyPrefix') as replicas should be recreated by new owners
+// Only primary keys are transferred during node join/leave operations.
 func (cs *ChordStorage) GetKeysInRange(ctx context.Context, startID, endID *big.Int) (map[string][]byte, error) {
 	// Get all keys from storage
 	allKeys, err := cs.storage.GetAll(ctx)
@@ -348,8 +403,14 @@ func (cs *ChordStorage) GetKeysInRange(ctx context.Context, startID, endID *big.
 	// Filter keys based on the range
 	for hashedKey, value := range allKeys {
 		// Skip Chord metadata keys - they should not be migrated
-		// Metadata keys use the "__chord_" prefix (e.g., "__chord_predecessor__")
-		if len(hashedKey) >= 8 && hashedKey[:8] == "__chord_" {
+		// Metadata keys use the 'chordKeyPrefix' (e.g., "__chord_predecessor__")
+		if len(hashedKey) >= len(chordKeyPrefix) && hashedKey[:len(chordKeyPrefix)] == chordKeyPrefix {
+			continue
+		}
+
+		// Skip replica keys - they should not be transferred
+		// Replicas will be recreated by the new owner of the primary keys
+		if len(hashedKey) >= len(replicaKeyPrefix) && hashedKey[:len(replicaKeyPrefix)] == replicaKeyPrefix {
 			continue
 		}
 

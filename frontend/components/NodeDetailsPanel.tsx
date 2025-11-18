@@ -10,8 +10,12 @@ interface NodeDetailsPanelProps {
 export default function NodeDetailsPanel({ node }: NodeDetailsPanelProps) {
   if (!node) {
     return (
-      <div className="bg-gray-800 rounded-lg p-6 h-full flex items-center justify-center">
-        <p className="text-gray-400">Select a node to view details</p>
+      <div className="h-full flex items-center justify-center p-5">
+        <div className="text-center">
+          <div className="text-4xl mb-3 opacity-50">📍</div>
+          <p className="text-gray-400 text-sm">Select a node from the ring</p>
+          <p className="text-gray-500 text-xs mt-1">Click any node to view details</p>
+        </div>
       </div>
     );
   }
@@ -28,11 +32,11 @@ export default function NodeDetailsPanel({ node }: NodeDetailsPanelProps) {
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 space-y-6 h-full overflow-y-auto">
+    <div className="p-5 space-y-5 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
       <div>
-        <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
-          <Server className="w-6 h-6" />
-          Node Details
+        <h2 className="text-lg font-semibold text-gray-200 mb-3 flex items-center gap-2">
+          <Server className="w-5 h-5 text-blue-400" />
+          Node Information
         </h2>
       </div>
 
@@ -55,10 +59,22 @@ export default function NodeDetailsPanel({ node }: NodeDetailsPanelProps) {
           </p>
         </div>
 
-        {node.keyCount !== undefined && (
-          <div>
-            <label className="text-sm text-gray-400">Stored Keys</label>
-            <p className="mt-1 text-white text-2xl font-bold">{node.keyCount}</p>
+        {(node.keyCount !== undefined || node.replicaCount !== undefined) && (
+          <div className="grid grid-cols-3 gap-3 pt-2">
+            <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
+              <label className="text-[10px] text-gray-400 uppercase tracking-wide block mb-1">Primary</label>
+              <p className="text-green-400 text-xl font-bold">{node.keyCount || 0}</p>
+            </div>
+            <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
+              <label className="text-[10px] text-gray-400 uppercase tracking-wide block mb-1">Replica</label>
+              <p className="text-blue-400 text-xl font-bold">{node.replicaCount || 0}</p>
+            </div>
+            <div className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
+              <label className="text-[10px] text-gray-400 uppercase tracking-wide block mb-1">Total</label>
+              <p className="text-orange-400 text-xl font-bold">
+                {(node.keyCount || 0) + (node.replicaCount || 0)}
+              </p>
+            </div>
           </div>
         )}
       </div>

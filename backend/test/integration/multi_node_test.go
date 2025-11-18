@@ -64,14 +64,15 @@ func (tc *testCluster) addNode(t *testing.T, port int, bootstrap *chord.NodeAddr
 
 	// Create and start gRPC server
 	serverAddr := fmt.Sprintf("127.0.0.1:%d", port)
-	grpcServer, err := transport.NewGRPCServer(node, serverAddr, tc.logger)
+	authToken := "" // No auth token for integration tests
+	grpcServer, err := transport.NewGRPCServer(node, serverAddr, authToken, tc.logger)
 	require.NoError(t, err)
 
 	err = grpcServer.Start()
 	require.NoError(t, err)
 
 	// Create gRPC client for inter-node communication
-	grpcClient := transport.NewGRPCClient(tc.logger, cfg.RPCTimeout)
+	grpcClient := transport.NewGRPCClient(tc.logger, authToken, cfg.RPCTimeout)
 	node.SetRemote(grpcClient)
 
 	// Create or join ring

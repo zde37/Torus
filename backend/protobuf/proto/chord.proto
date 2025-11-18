@@ -20,8 +20,11 @@ message Node {
   // HTTP API port
   int32 http_port = 4;
 
-  // Number of user keys stored (excluding Chord metadata)
+  // Number of primary user keys stored (excluding Chord metadata and replica keys)
   int32 key_count = 5;
+
+  // Number of replica keys stored on this node
+  int32 replica_count = 6;
 }
 
 // FindSuccessorRequest asks a node to find the successor of a given ID.
@@ -308,6 +311,60 @@ message GetFingerTableResponse {
   repeated FingerTableEntry entries = 1;
 }
 
+// BulkStoreRequest contains multiple key-value pairs to store.
+message BulkStoreRequest {
+  // Map of keys to values
+  map<string, bytes> items = 1;
+}
+
+// BulkStoreResponse confirms bulk storage.
+message BulkStoreResponse {
+  // Whether the operation was successful
+  bool success = 1;
+
+  // Number of items stored
+  int32 count = 2;
+
+  // Optional error message for failed items
+  string error = 3;
+}
+
+// NotifyPredecessorLeavingRequest notifies predecessor about node leaving.
+message NotifyPredecessorLeavingRequest {
+  // The new successor after the leaving node
+  Node new_successor = 1;
+}
+
+// NotifyPredecessorLeavingResponse acknowledges the notification.
+message NotifyPredecessorLeavingResponse {
+  // Whether the notification was processed successfully
+  bool success = 1;
+}
+
+// NotifySuccessorLeavingRequest notifies successor about node leaving.
+message NotifySuccessorLeavingRequest {
+  // The new predecessor after the leaving node
+  Node new_predecessor = 1;
+}
+
+// NotifySuccessorLeavingResponse acknowledges the notification.
+message NotifySuccessorLeavingResponse {
+  // Whether the notification was processed successfully
+  bool success = 1;
+}
+
+// NotifyNodeLeavingRequest notifies a node about another node leaving.
+message NotifyNodeLeavingRequest {
+  // The node that is leaving
+  Node leaving_node = 1;
+}
+
+// NotifyNodeLeavingResponse acknowledges the notification.
+message NotifyNodeLeavingResponse {
+  // Whether the notification was processed successfully
+  bool success = 1;
+}
+
 // ChordService defines the gRPC service for Chord protocol operations.
 service ChordService {
   // FindSuccessor finds the successor of a given ID.
@@ -413,4 +470,20 @@ service ChordService {
   // DeleteReplica removes a replica of a key.
   // Used to maintain consistency when deleting keys.
   rpc DeleteReplica(DeleteReplicaRequest) returns (DeleteReplicaResponse);
+
+  // BulkStore stores multiple key-value pairs efficiently.
+  // Used during node leave for bulk key transfer.
+  rpc BulkStore(BulkStoreRequest) returns (BulkStoreResponse);
+
+  // NotifyPredecessorLeaving notifies predecessor about node leaving.
+  // Used during graceful shutdown to update ring topology.
+  rpc NotifyPredecessorLeaving(NotifyPredecessorLeavingRequest) returns (NotifyPredecessorLeavingResponse);
+
+  // NotifySuccessorLeaving notifies successor about node leaving.
+  // Used during graceful shutdown to update ring topology.
+  rpc NotifySuccessorLeaving(NotifySuccessorLeavingRequest) returns (NotifySuccessorLeavingResponse);
+
+  // NotifyNodeLeaving notifies any node about another node leaving.
+  // Used to inform successor list members during graceful shutdown.
+  rpc NotifyNodeLeaving(NotifyNodeLeavingRequest) returns (NotifyNodeLeavingResponse);
 }

@@ -1,10 +1,12 @@
 package chord
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/zde37/torus/internal/config"
@@ -16,8 +18,53 @@ const (
 	// replicationTimeout is the maximum time to wait for background replication operations
 	replicationTimeout = 10 * time.Second
 
-	// pingMessageStabilize is the message sent during stabilization pings
-	pingMessageStabilize = "stabilize"
+	// cleanupTimeout is the maximum time to wait for cleanup operations
+	cleanupTimeout = 5 * time.Second
+
+	// notificationTimeout is the maximum time to wait for node leave notifications
+	notificationTimeout = 5 * time.Second
+
+	// replicationThrottleDelay is the delay between replication batches to avoid network flooding
+	replicationThrottleDelay = 10 * time.Millisecond
+
+	// replicationBatchSize is the number of keys to replicate before applying throttle delay
+	replicationBatchSize = 10
+
+	// shortNotificationTimeout is used for less critical notifications
+	shortNotificationTimeout = 2 * time.Second
+
+	// newNodeGracePeriod is how long to wait before trusting a new node's successor list for cleanup decisions
+	// Tuned to 90s to balance safety and aggressive cleanup
+	newNodeGracePeriod = 90 * time.Second
+
+	// nodeTrackingExpiry is when to remove old node tracking entries (grace period + 10min buffer)
+	nodeTrackingExpiry = newNodeGracePeriod + 10*time.Minute
+
+	// cleanupCooldownPeriod is how long to wait after successor list changes before running cleanup
+	// This prevents cleanup from running before re-replication completes
+	cleanupCooldownPeriod = 10 * time.Second
+
+	// livenessCacheTTL is how long to cache node liveness results
+	livenessCacheTTL = 5 * time.Second
+
+	// livenessCacheExpiry is when to remove old liveness cache entries
+	livenessCacheExpiry = 10 * time.Minute
+
+	// cleanupRetryDelay is the delay before retrying a failed operation during cleanup
+	cleanupRetryDelay = 100 * time.Millisecond
+
+	// safetyNetBufferMultiplier is the multiplier for calculating max reasonable replica count
+	// A 2x buffer accounts for transient states during stabilization
+	safetyNetBufferMultiplier = 2
+
+	// minReplicaCountThreshold is the minimum replica count before triggering safety net warnings
+	minReplicaCountThreshold = 20
+
+	// hexDisplayLength is the number of hex characters to display in logs for readability
+	hexDisplayLength = 8
+
+	// Ping message types
+	pingMessageHealthCheck = "health_check"
 )
 
 // truncateHex safely truncates a hex string to the specified length.
@@ -72,8 +119,31 @@ type ChordNode struct {
 	wg     sync.WaitGroup
 
 	// Shutdown flag
-	shutdown bool
+	shutdown   bool
 	shutdownMu sync.RWMutex
+
+	// Node tracking for grace period (to avoid cleaning up replicas from newly joined nodes)
+	firstSeenNodes map[string]time.Time
+	firstSeenMu    sync.Mutex
+
+	// Replication synchronization to prevent race conditions
+	replicationInProgress atomic.Bool  // tracks if replication is currently running
+	lastSuccessorChange   time.Time    // timestamp of last successor list change
+	lastSuccessorChangeMu sync.RWMutex // protects lastSuccessorChange
+
+	// Old successor list for idempotent re-replication
+	oldSuccessorList   []*NodeAddress // successor list before last change
+	oldSuccessorListMu sync.RWMutex   // protects oldSuccessorList
+
+	// Node liveness cache to reduce network overhead (5-second TTL)
+	livenessCache   map[string]livenessCacheEntry
+	livenessCacheMu sync.RWMutex
+}
+
+// livenessCacheEntry caches node liveness check results with timestamp
+type livenessCacheEntry struct {
+	alive     bool
+	timestamp time.Time
 }
 
 // NewChordNode creates a new Chord node with the given configuration.
@@ -86,21 +156,16 @@ func NewChordNode(cfg *config.Config, logger *pkg.Logger) (*ChordNode, error) {
 		return nil, fmt.Errorf("logger cannot be nil")
 	}
 
-	// Validate config
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	// Compute node ID from address
 	nodeID := hash.HashAddress(cfg.Host, cfg.Port)
 
-	// Create node address
 	address := NewNodeAddress(nodeID, cfg.Host, cfg.Port, cfg.HTTPPort)
 
-	// Create storage
 	chordStorage := NewDefaultChordStorage()
 
-	// Create context for lifecycle management
 	ctx, cancel := context.WithCancel(context.Background())
 
 	node := &ChordNode{
@@ -116,6 +181,8 @@ func NewChordNode(cfg *config.Config, logger *pkg.Logger) (*ChordNode, error) {
 		ctx:             ctx,
 		cancel:          cancel,
 		shutdown:        false,
+		firstSeenNodes:  make(map[string]time.Time),
+		livenessCache:   make(map[string]livenessCacheEntry),
 	}
 
 	node.logger.Info().
@@ -261,6 +328,9 @@ func (n *ChordNode) updateSuccessorList() error {
 			Err(err).
 			Str("successor", succ.Address()).
 			Msg("Failed to get successor list from successor")
+
+		// If we can't get the list, at least verify our current list
+		n.verifyAndCleanSuccessorList()
 		return nil // Don't fail on RPC error
 	}
 
@@ -272,7 +342,18 @@ func (n *ChordNode) updateSuccessorList() error {
 	// Add our immediate successor first
 	newList = append(newList, succ.Copy())
 
-	// Add successors from our successor's list, avoiding duplicates
+	// Track when we first see our successor for grace period logic
+	n.firstSeenMu.Lock()
+	succAddr := succ.Address()
+	if _, exists := n.firstSeenNodes[succAddr]; !exists {
+		n.firstSeenNodes[succAddr] = time.Now()
+		n.logger.Debug().
+			Str("node", succAddr).
+			Msg("Recording first seen timestamp for successor")
+	}
+	n.firstSeenMu.Unlock()
+
+	// Add successors from our successor's list, avoiding duplicates and dead nodes
 	for _, node := range succList {
 		if len(newList) >= n.config.SuccessorListSize {
 			break
@@ -289,7 +370,29 @@ func (n *ChordNode) updateSuccessorList() error {
 			}
 		}
 		if !isDuplicate {
-			newList = append(newList, node.Copy())
+			// Verify the node is alive before adding it
+			if n.IsNodeAlive(node) {
+				newList = append(newList, node.Copy())
+
+				// Track when we first see this node for grace period logic
+				n.firstSeenMu.Lock()
+				nodeAddr := node.Address()
+				if _, exists := n.firstSeenNodes[nodeAddr]; !exists {
+					n.firstSeenNodes[nodeAddr] = time.Now()
+					n.logger.Debug().
+						Str("node", nodeAddr).
+						Msg("Recording first seen timestamp for new node")
+				}
+				n.firstSeenMu.Unlock()
+
+				n.logger.Debug().
+					Str("node", node.Address()).
+					Msg("Adding alive node to successor list")
+			} else {
+				n.logger.Debug().
+					Str("node", node.Address()).
+					Msg("Skipping dead node from successor's list")
+			}
 		}
 	}
 
@@ -302,6 +405,39 @@ func (n *ChordNode) updateSuccessorList() error {
 		Msg("Successor list updated")
 
 	return nil
+}
+
+// verifyAndCleanSuccessorList removes dead nodes from the successor list.
+func (n *ChordNode) verifyAndCleanSuccessorList() {
+	n.successorMu.Lock()
+	defer n.successorMu.Unlock()
+
+	if n.remote == nil {
+		return
+	}
+
+	newList := make([]*NodeAddress, 0)
+	for _, succ := range n.successorList {
+		if succ == nil || succ.Equals(n.address) {
+			continue
+		}
+
+		// Check if successor is alive
+		if n.IsNodeAlive(succ) {
+			newList = append(newList, succ)
+		} else {
+			n.logger.Debug().
+				Str("node", succ.Address()).
+				Msg("Removing dead node from successor list")
+		}
+	}
+
+	// If all successors are dead, we're alone
+	if len(newList) == 0 {
+		newList = append(newList, n.address.Copy())
+	}
+
+	n.successorList = newList
 }
 
 // findFirstAliveSuccessor iterates through the successor list and returns the first alive successor.
@@ -328,9 +464,7 @@ func (n *ChordNode) findFirstAliveSuccessor() *NodeAddress {
 		}
 
 		// Try to ping the successor
-		_, err := n.remote.Ping(succ.Address(), "health_check")
-		if err == nil {
-			// Successor is alive
+		if n.IsNodeAlive(succ) {
 			n.logger.Debug().
 				Str("successor", truncateHex(succ.ID.Text(16), 8)).
 				Msg("Found alive successor")
@@ -338,14 +472,18 @@ func (n *ChordNode) findFirstAliveSuccessor() *NodeAddress {
 		}
 
 		n.logger.Debug().
-			Err(err).
 			Str("successor", truncateHex(succ.ID.Text(16), 8)).
 			Msg("Successor is not reachable, trying next")
 	}
 
-	// No alive successor found
-	n.logger.Warn().Msg("No alive successor found in successor list")
-	return nil
+	n.logger.Warn().Msg("No alive successor found in successor list - setting self as successor")
+
+	// Set ourselves as our own successor (we're alone in the ring)
+	n.setSuccessor(n.address.Copy())
+	n.setSuccessorList([]*NodeAddress{n.address.Copy()})
+	n.setPredecessor(nil) // No predecessor when alone
+
+	return n.address.Copy()
 }
 
 // getPredecessor returns a copy of the predecessor.
@@ -373,11 +511,7 @@ func (n *ChordNode) setPredecessor(node *NodeAddress) {
 	n.logger.Debug().
 		Str("predecessor_id", func() string {
 			if node != nil {
-				hexStr := node.ID.Text(16)
-				if len(hexStr) > 8 {
-					return hexStr[:8]
-				}
-				return hexStr
+				return truncateHex(node.ID.Text(16), hexDisplayLength)
 			}
 			return "nil"
 		}()).
@@ -439,12 +573,10 @@ func (n *ChordNode) Create() error {
 	n.setSuccessor(n.address)
 	n.initFingerTable(n.address)
 
-	// Start background tasks
 	n.startBackgroundTasks()
 
 	n.logger.Info().Msg("Chord ring created successfully")
 
-	// Broadcast ring update event
 	n.broadcastRingUpdate(EventNodeJoin, "Node created new Chord ring")
 
 	return nil
@@ -460,12 +592,10 @@ func (n *ChordNode) Join(bootstrapAddr *NodeAddress) error {
 		Str("bootstrap", bootstrapAddr.Address()).
 		Msg("Joining Chord ring")
 
-	// Check if we have a remote client for RPC calls
 	if n.remote == nil {
 		return fmt.Errorf("remote client not set - call SetRemote() before Join()")
 	}
 
-	// Ask the bootstrap node to find our successor
 	n.logger.Debug().
 		Str("node_id", truncateHex(n.id.Text(16), 8)).
 		Msg("Asking bootstrap node for successor")
@@ -539,13 +669,21 @@ func (n *ChordNode) Join(bootstrapAddr *NodeAddress) error {
 						Msg("Failed to store transferred key")
 					return fmt.Errorf("failed to store transferred key: %w", err)
 				}
+
+				// Delete any existing REPLICA of this key after storing as PRIMARY
+				// Storage keys are already in hex format, so pass directly to DeleteReplica
+				// This prevents having both primary and replica of the same key
+				if err := n.storage.DeleteReplica(ctx, key); err == nil {
+					n.logger.Debug().
+						Str("key", key).
+						Msg("Deleted existing replica after storing as primary")
+				}
 			}
 
 			n.logger.Info().
 				Int("key_count", len(keys)).
 				Msg("Stored transferred keys locally")
 
-			// Tell the successor to delete the transferred keys
 			n.logger.Info().Msg("Requesting successor to delete transferred keys")
 			if err := n.remote.DeleteTransferredKeys(ctx, successor.Address(), startID, n.id); err != nil {
 				n.logger.Warn().
@@ -573,7 +711,6 @@ func (n *ChordNode) Join(bootstrapAddr *NodeAddress) error {
 
 	n.logger.Info().Msg("Joined Chord ring successfully")
 
-	// Broadcast ring update event
 	n.broadcastRingUpdate(EventNodeJoin, "Node joined Chord ring")
 
 	return nil
@@ -673,38 +810,38 @@ func (n *ChordNode) stabilize() error {
 			Msg("Failed to contact successor, attempting to find alive successor")
 
 		// Successor is unreachable - try to find an alive successor from successor list
+		// findFirstAliveSuccessor() always returns something (alive successor or self)
 		aliveSucc := n.findFirstAliveSuccessor()
-		if aliveSucc != nil && !aliveSucc.Equals(n.address) {
-			n.logger.Info().
-				Str("old_successor", succ.Address()).
-				Str("new_successor", aliveSucc.Address()).
-				Msg("Replacing failed successor with alive successor from list")
-			n.setSuccessor(aliveSucc)
-			succ = aliveSucc
 
-			// Try to get predecessor from new successor
-			x, err = n.remote.GetPredecessor(succ.Address())
-			if err != nil {
-				n.logger.Debug().
-					Err(err).
-					Str("successor", succ.Address()).
-					Msg("Failed to get predecessor from new successor")
-				// Continue with stabilization anyway
-			}
-		} else {
-			// No alive successor found, can't proceed with stabilization
+		// If we're alone in the ring (successor is self), skip stabilization
+		if aliveSucc.Equals(n.address) {
+			n.logger.Info().Msg("We are alone in the ring, skipping stabilization")
 			return nil
+		}
+
+		n.logger.Info().
+			Str("old_successor", succ.Address()).
+			Str("new_successor", aliveSucc.Address()).
+			Msg("Replacing failed successor with alive successor from list")
+		n.setSuccessor(aliveSucc)
+		succ = aliveSucc
+
+		// Try to get predecessor from new successor
+		x, err = n.remote.GetPredecessor(succ.Address())
+		if err != nil {
+			n.logger.Debug().
+				Err(err).
+				Str("successor", succ.Address()).
+				Msg("Failed to get predecessor from new successor")
+			// Continue with stabilization anyway
 		}
 	}
 
 	// If x is between (n, successor), then x should be our successor
 	// But first verify that x is actually reachable
 	if x != nil && hash.Between(x.ID, n.id, succ.ID) {
-		// Verify x is alive before setting it as successor
-		_, err := n.remote.Ping(x.Address(), pingMessageStabilize)
-		if err != nil {
+		if !n.IsNodeAlive(x) {
 			n.logger.Warn().
-				Err(err).
 				Str("potential_successor", x.Address()).
 				Msg("Potential successor is unreachable, keeping current successor")
 			// Don't update successor if the new one is dead
@@ -720,36 +857,91 @@ func (n *ChordNode) stabilize() error {
 			Err(err).
 			Str("successor", succ.Address()).
 			Msg("Failed to notify successor")
-		return nil // Don't fail stabilization on RPC error
+		return nil
 	}
+
+	oldSuccessorList := n.getSuccessorList()
 
 	// Update successor list for fault tolerance
 	if err := n.updateSuccessorList(); err != nil {
 		n.logger.Debug().
 			Err(err).
 			Msg("Failed to update successor list")
-		// Don't fail stabilization on error
+	}
+
+	// Check if successor list has changed
+	newSuccessorList := n.getSuccessorList()
+	successorListChanged := n.successorListChanged(oldSuccessorList, newSuccessorList)
+
+	if successorListChanged {
+		// Save old successor list for idempotent re-replication
+		n.oldSuccessorListMu.Lock()
+		n.oldSuccessorList = make([]*NodeAddress, len(oldSuccessorList))
+		copy(n.oldSuccessorList, oldSuccessorList)
+		n.oldSuccessorListMu.Unlock()
+
+		// Record the timestamp of this successor list change
+		n.lastSuccessorChangeMu.Lock()
+		n.lastSuccessorChange = time.Now()
+		n.lastSuccessorChangeMu.Unlock()
+
+		// Only trigger re-replication if we actually own primary keys
+		// This prevents nodes without primary keys from creating unnecessary replicas
+		keyCount, _ := n.GetKeyCount(context.Background())
+		if keyCount > 0 {
+			n.logger.Info().
+				Int("primary_keys", int(keyCount)).
+				Msg("Successor list changed and we own primary keys, triggering re-replication")
+
+			// Re-replicate our primary keys to new successors and WAIT for completion
+			// This prevents cleanup from running before replication is done
+			done := make(chan struct{})
+			go func() {
+				n.replicateOwnedPrimaryKeys()
+				close(done)
+			}()
+
+			// Wait for replication to complete with timeout
+			select {
+			case <-done:
+				n.logger.Debug().Msg("Re-replication completed successfully")
+			case <-time.After(replicationTimeout):
+				n.logger.Warn().
+					Dur("timeout", replicationTimeout).
+					Msg("Re-replication timed out, proceeding with stabilization")
+			}
+		} else {
+			n.logger.Info().Msg("Successor list changed but we have no primary keys to replicate")
+		}
 	}
 
 	// Check if predecessor is still alive
 	pred := n.getPredecessor()
 	if pred != nil && !pred.Equals(n.address) {
-		// Try to ping predecessor
-		_, err := n.remote.Ping(pred.Address(), pingMessageStabilize)
-		if err != nil {
+		if !n.IsNodeAlive(pred) {
 			n.logger.Warn().
-				Err(err).
 				Str("predecessor", pred.Address()).
 				Msg("Predecessor is unreachable, clearing it")
 			n.setPredecessor(nil)
 		}
 	}
 
+	n.cleanDeadNodesFromFingerTable()
+
+	// Clean up stale replicas that we no longer should store
+	// This happens when ring topology changes (nodes join/leave)
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+	if err := n.CleanupStaleReplicas(cleanupCtx); err != nil {
+		n.logger.Debug().
+			Err(err).
+			Msg("Failed to cleanup stale replicas during stabilization")
+	}
+
 	n.logger.Debug().
 		Str("successor", truncateHex(succ.ID.Text(16), 8)).
 		Msg("Stabilize completed")
 
-	// Broadcast ring update event after stabilization
 	n.broadcastRingUpdate(EventStabilization, "Ring stabilization completed")
 
 	return nil
@@ -821,7 +1013,6 @@ func (n *ChordNode) FindSuccessor(id *big.Int) (*NodeAddress, error) {
 		return succ.Copy(), nil
 	}
 
-	// Otherwise, forward the query to the closest preceding node
 	closestNode := n.closestPrecedingNode(id)
 
 	// If closest node is self, return successor
@@ -836,20 +1027,33 @@ func (n *ChordNode) FindSuccessor(id *big.Int) (*NodeAddress, error) {
 			n.logger.Debug().
 				Err(err).
 				Str("closest_node", closestNode.Address()).
-				Msg("Failed to forward FindSuccessor via RPC")
-			// Fall back to returning the closest node
-			return closestNode.Copy(), nil
+				Msg("Failed to forward FindSuccessor via RPC, trying fallback")
+
+			// The target node might be dead. Try to find an alive successor from our list.
+			// This provides better fault tolerance instead of returning a potentially dead node.
+			successors := n.getSuccessorList()
+			for _, s := range successors {
+				if n.IsNodeAlive(s) {
+					n.logger.Debug().
+						Str("fallback_node", s.Address()).
+						Msg("Using alive successor as fallback")
+					return s.Copy(), nil
+				}
+			}
+
+			// If no alive successors found, fall back to our immediate successor (better than returning a known-dead closestNode)
+			return succ.Copy(), nil
 		}
 		return successor, nil
 	}
 
-	// No remote client, return the closest node as best effort
 	return closestNode.Copy(), nil
 }
 
 // FindSuccessorWithPath finds the successor of a given ID and tracks the path taken.
 // This is used for visualization and debugging of the lookup process.
 func (n *ChordNode) FindSuccessorWithPath(id *big.Int) (*NodeAddress, []*NodeAddress, error) {
+
 	if id == nil {
 		return nil, nil, fmt.Errorf("id cannot be nil")
 	}
@@ -870,7 +1074,6 @@ func (n *ChordNode) FindSuccessorWithPath(id *big.Int) (*NodeAddress, []*NodeAdd
 		return succ.Copy(), path, nil
 	}
 
-	// Otherwise, forward the query to the closest preceding node
 	closestNode := n.closestPrecedingNode(id)
 
 	// If closest node is self, return successor
@@ -887,24 +1090,36 @@ func (n *ChordNode) FindSuccessorWithPath(id *big.Int) (*NodeAddress, []*NodeAdd
 			n.logger.Debug().
 				Err(err).
 				Str("closest_node", closestNode.Address()).
-				Msg("Failed to forward FindSuccessorWithPath via RPC")
-			// Fall back to returning the closest node (with it in the path)
-			path = append(path, closestNode.Copy())
-			return closestNode.Copy(), path, nil
+				Msg("Failed to forward FindSuccessorWithPath via RPC, trying fallback")
+
+			// The target node might be dead. Try to find an alive successor from our list.
+			successors := n.getSuccessorList()
+			for _, s := range successors {
+				if n.IsNodeAlive(s) {
+					n.logger.Debug().
+						Str("fallback_node", s.Address()).
+						Msg("Using alive successor as fallback for path visualization")
+					path = append(path, s.Copy())
+					return s.Copy(), path, nil
+				}
+			}
+
+			// If no alive successors found, fall back to our immediate successor
+			path = append(path, succ.Copy())
+			return succ.Copy(), path, nil
 		}
 
-		// Merge the paths - remotePath already includes closestNode as its first element
 		path = append(path, remotePath...)
 		return successor, path, nil
 	}
 
-	// No remote client, return the closest node as best effort
 	path = append(path, closestNode.Copy())
 	return closestNode.Copy(), path, nil
 }
 
 // closestPrecedingNode finds the closest node that precedes the given ID.
 // This is used to optimize lookups by jumping closer to the target.
+// Only returns ALIVE nodes to prevent routing through dead nodes.
 func (n *ChordNode) closestPrecedingNode(id *big.Int) *NodeAddress {
 	n.fingerMu.RLock()
 	defer n.fingerMu.RUnlock()
@@ -918,12 +1133,194 @@ func (n *ChordNode) closestPrecedingNode(id *big.Int) *NodeAddress {
 
 		// If finger.node is in (n, id), it's closer than us
 		if hash.Between(finger.Node.ID, n.id, id) {
-			return finger.Node.Copy()
+			// Verify the node is alive before returning it
+			// This prevents routing through dead nodes after failures
+			if n.IsNodeAlive(finger.Node) {
+				return finger.Node.Copy()
+			}
+			// Node is dead, try the next finger entry
+			n.logger.Debug().
+				Str("dead_node", finger.Node.Address()).
+				Msg("Skipping dead node in finger table")
 		}
 	}
 
-	// No better node found, return self
+	// No better alive node found, return self
 	return n.address.Copy()
+}
+
+// OnNodeLeave performs graceful shutdown with key transfer to maintain data integrity.
+// It transfers all primary and replica keys to appropriate nodes before leaving.
+func (n *ChordNode) OnNodeLeave(ctx context.Context) error {
+	n.shutdownMu.Lock()
+	if n.shutdown {
+		n.shutdownMu.Unlock()
+		return nil
+	}
+	n.shutdownMu.Unlock()
+
+	n.logger.Info().Msg("Starting graceful node leave with key transfer")
+
+	// Get current ring state
+	successor := n.successor()
+	predecessor := n.getPredecessor()
+	successorList := n.getSuccessorList()
+
+	if successor == nil || successor.Equals(n.address) {
+		// We're the only node in the ring, no transfer needed
+		n.logger.Info().Msg("Single node in ring, no key transfer needed")
+		return n.Shutdown()
+	}
+
+	n.logger.Info().
+		Str("successor", successor.Address()).
+		Msg("Transferring primary keys to successor")
+
+	// Get all keys we're responsible for
+	allData, err := n.storage.GetAll(ctx)
+	if err != nil {
+		n.logger.Error().Err(err).Msg("Failed to get all keys for transfer")
+		// Continue with shutdown even if transfer fails
+	} else {
+		primaryKeys := make(map[string][]byte)
+		replicaKeys := make(map[string][]byte)
+
+		// Separate primary keys from replica keys
+		for key, value := range allData {
+			// Skip Chord metadata keys
+			if len(key) >= len(chordKeyPrefix) && key[:len(chordKeyPrefix)] == chordKeyPrefix {
+				continue
+			}
+
+			// Check if it's a replica key
+			if len(key) >= len(replicaKeyPrefix) && key[:len(replicaKeyPrefix)] == replicaKeyPrefix {
+				originalKey := key[len(replicaKeyPrefix):]
+				replicaKeys[originalKey] = value
+			} else {
+				// It's a primary key (hashed)
+				primaryKeys[key] = value
+			}
+		}
+
+		// Transfer primary keys to successor
+		if len(primaryKeys) > 0 {
+			transferCtx, cancel := context.WithTimeout(ctx, replicationTimeout)
+			defer cancel()
+
+			err := n.remote.BulkStore(transferCtx, successor.Address(), primaryKeys)
+			if err != nil {
+				n.logger.Error().
+					Err(err).
+					Int("key_count", len(primaryKeys)).
+					Msg("Failed to transfer primary keys to successor")
+			} else {
+				n.logger.Info().
+					Int("key_count", len(primaryKeys)).
+					Str("successor", successor.Address()).
+					Msg("Successfully transferred primary keys to successor")
+			}
+		}
+
+		// Transfer replica keys to appropriate nodes in successor list
+		if len(replicaKeys) > 0 && len(successorList) > 0 {
+			n.logger.Info().
+				Int("replica_count", len(replicaKeys)).
+				Msg("Transferring replica keys to successor list")
+
+			for originalKey, value := range replicaKeys {
+				// Find who should be responsible for this key
+				keyID := hash.HashString(originalKey)
+				responsible, err := n.FindSuccessor(keyID)
+				if err != nil {
+					n.logger.Debug().
+						Err(err).
+						Str("key", originalKey).
+						Msg("Failed to find successor for replica key")
+					continue
+				}
+
+				// The replica should go to one of the responsible node's successors
+				// Since we're leaving, transfer to our successor if it's not the responsible node
+				targetNode := successor
+				if responsible.Equals(successor) && len(successorList) > 1 {
+					// If successor is responsible, send replica to next in line
+					targetNode = successorList[1]
+				}
+
+				transferCtx, cancel := context.WithTimeout(ctx, notificationTimeout)
+				err = n.remote.StoreReplica(transferCtx, targetNode.Address(), originalKey, value)
+				cancel()
+
+				if err != nil {
+					n.logger.Debug().
+						Err(err).
+						Str("key", originalKey).
+						Str("target", targetNode.Address()).
+						Msg("Failed to transfer replica key")
+				}
+			}
+
+			n.logger.Info().
+				Int("replica_count", len(replicaKeys)).
+				Msg("Completed replica key transfer")
+		}
+	}
+
+	if predecessor != nil && n.remote != nil {
+		n.logger.Info().
+			Str("predecessor", predecessor.Address()).
+			Str("new_successor", successor.Address()).
+			Msg("Notifying predecessor to update successor")
+
+		notifyCtx, cancel := context.WithTimeout(ctx, notificationTimeout)
+		err := n.remote.NotifyPredecessorLeaving(notifyCtx, predecessor.Address(), successor)
+		cancel()
+
+		if err != nil {
+			n.logger.Warn().
+				Err(err).
+				Str("predecessor", predecessor.Address()).
+				Msg("Failed to notify predecessor about leave")
+		}
+	}
+
+	if predecessor != nil && n.remote != nil {
+		n.logger.Info().
+			Str("successor", successor.Address()).
+			Str("new_predecessor", predecessor.Address()).
+			Msg("Notifying successor to update predecessor")
+
+		notifyCtx, cancel := context.WithTimeout(ctx, notificationTimeout)
+		err := n.remote.NotifySuccessorLeaving(notifyCtx, successor.Address(), predecessor)
+		cancel()
+
+		if err != nil {
+			n.logger.Warn().
+				Err(err).
+				Str("successor", successor.Address()).
+				Msg("Failed to notify successor about leave")
+		}
+	}
+
+	for i, node := range successorList {
+		if node.Equals(n.address) {
+			continue
+		}
+
+		n.logger.Debug().
+			Int("index", i).
+			Str("node", node.Address()).
+			Msg("Notifying successor list member about leave")
+
+		notifyCtx, cancel := context.WithTimeout(ctx, shortNotificationTimeout)
+		_ = n.remote.NotifyNodeLeaving(notifyCtx, node.Address(), n.address)
+		cancel()
+	}
+
+	n.logger.Info().Msg("Graceful leave protocol completed, proceeding with shutdown")
+
+	// Finally, perform the actual shutdown
+	return n.Shutdown()
 }
 
 // Shutdown gracefully shuts down the node.
@@ -931,23 +1328,19 @@ func (n *ChordNode) Shutdown() error {
 	n.shutdownMu.Lock()
 	if n.shutdown {
 		n.shutdownMu.Unlock()
-		return nil // Already shutdown
+		return nil
 	}
 	n.shutdown = true
 	n.shutdownMu.Unlock()
 
 	n.logger.Info().Msg("Shutting down ChordNode")
 
-	// Broadcast ring update event before stopping background tasks
 	n.broadcastRingUpdate(EventNodeLeave, "Node leaving Chord ring")
 
-	// Cancel context to stop background tasks
 	n.cancel()
 
-	// Wait for background tasks to finish
 	n.wg.Wait()
 
-	// Close storage
 	if err := n.storage.Close(); err != nil {
 		n.logger.Error().Err(err).Msg("Failed to close storage")
 	}
@@ -997,7 +1390,6 @@ func (n *ChordNode) TransferKeys(ctx context.Context, startID, endID *big.Int) (
 		Str("end_id", truncateHex(endID.Text(16), 8)).
 		Msg("Transferring keys in range")
 
-	// Get keys in the specified range
 	keys, err := n.storage.GetKeysInRange(ctx, startID, endID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get keys in range: %w", err)
@@ -1092,6 +1484,9 @@ func (n *ChordNode) Get(ctx context.Context, key string) ([]byte, bool, error) {
 			Str("responsible_node", responsible.Address()).
 			Msg("Primary node failed, trying replicas")
 
+		// Replicas are stored with the hex hash key, not the original key string
+		hashedKey := keyID.Text(16)
+
 		// Get successor list to find replicas
 		successors := n.getSuccessorList()
 		for _, succ := range successors {
@@ -1100,7 +1495,7 @@ func (n *ChordNode) Get(ctx context.Context, key string) ([]byte, bool, error) {
 			}
 
 			// Try to get replica from this successor
-			replicaValue, replicaFound, replicaErr := n.remote.GetReplica(ctx, succ.Address(), key)
+			replicaValue, replicaFound, replicaErr := n.remote.GetReplica(ctx, succ.Address(), hashedKey)
 			if replicaErr == nil && replicaFound {
 				n.logger.Info().
 					Str("key", key).
@@ -1123,7 +1518,6 @@ func (n *ChordNode) Set(ctx context.Context, key string, value []byte, ttl time.
 		return fmt.Errorf("key cannot be empty")
 	}
 
-	// Hash the key to find which node should store it
 	keyID := hash.HashKey([]byte(key))
 
 	// Find the node responsible for this key
@@ -1146,10 +1540,12 @@ func (n *ChordNode) Set(ctx context.Context, key string, value []byte, ttl time.
 		// Replicate to successors for fault tolerance
 		// Use background context with timeout instead of request context
 		// to avoid cancellation when HTTP request completes
+		// IMPORTANT: Pass the hashed key (as hex string) to match how it's stored in the database
+		hashedKey := keyID.Text(16)
 		go func() {
 			replicationCtx, cancel := context.WithTimeout(context.Background(), replicationTimeout)
 			defer cancel()
-			n.replicateToSuccessors(replicationCtx, key, value, ttl)
+			n.replicateToSuccessors(replicationCtx, hashedKey, value, ttl)
 		}()
 
 		return nil
@@ -1204,8 +1600,6 @@ func (n *ChordNode) Delete(ctx context.Context, key string) error {
 			Msg("Deleted key locally")
 
 		// Delete replicas from successors
-		// Use background context with timeout instead of request context
-		// to avoid cancellation when HTTP request completes
 		go func() {
 			deletionCtx, cancel := context.WithTimeout(context.Background(), replicationTimeout)
 			defer cancel()
@@ -1241,6 +1635,57 @@ func (n *ChordNode) HashKey(key string) *big.Int {
 	return hash.HashKey([]byte(key))
 }
 
+// SetSuccessor sets the node's immediate successor.
+// Used during ring topology updates like node leave events.
+func (n *ChordNode) SetSuccessor(node *NodeAddress) {
+	n.setSuccessor(node)
+}
+
+// SetPredecessor sets the node's predecessor.
+// Used during ring topology updates like node leave events.
+func (n *ChordNode) SetPredecessor(node *NodeAddress) {
+	n.setPredecessor(node)
+}
+
+// RemoveFromSuccessorList removes a node from the successor list.
+// Used when a node leaves the ring gracefully.
+func (n *ChordNode) RemoveFromSuccessorList(node *NodeAddress) {
+	n.successorMu.Lock()
+	defer n.successorMu.Unlock()
+
+	// Filter out the leaving node from the successor list
+	newList := make([]*NodeAddress, 0, len(n.successorList))
+	for _, succ := range n.successorList {
+		if !succ.Equals(node) {
+			newList = append(newList, succ)
+		}
+	}
+	n.successorList = newList
+
+	n.logger.Debug().
+		Str("removed_node", node.Address()).
+		Int("new_list_size", len(newList)).
+		Msg("Removed node from successor list")
+}
+
+// SetRaw stores a value with a raw key (without hashing).
+// Used for bulk transfers during node leave operations.
+func (n *ChordNode) SetRaw(ctx context.Context, key string, value []byte) error {
+	return n.storage.SetRaw(ctx, key, value, 0)
+}
+
+// GetAllReplicaKeys returns all replica keys stored on this node.
+// Used for testing and monitoring replica distribution.
+func (n *ChordNode) GetAllReplicaKeys(ctx context.Context) ([]string, error) {
+	return n.storage.GetAllReplicaKeys(ctx)
+}
+
+// CountUserKeys returns the number of user keys stored on this node.
+// Excludes Chord metadata and system keys.
+func (n *ChordNode) CountUserKeys(ctx context.Context) (int, error) {
+	return n.storage.CountUserKeys(ctx)
+}
+
 // GetFingerTable returns a copy of the node's finger table.
 func (n *ChordNode) GetFingerTable() []*FingerEntry {
 	n.fingerMu.RLock()
@@ -1263,11 +1708,92 @@ func (n *ChordNode) GetKeyCount(ctx context.Context) (int, error) {
 	return n.storage.CountUserKeys(ctx)
 }
 
+// GetReplicaCount returns the number of replica keys stored on this node.
+func (n *ChordNode) GetReplicaCount(ctx context.Context) (int, error) {
+	return n.storage.CountReplicaKeys(ctx)
+}
+
+// IsNodeAlive checks if a given node is responsive.
+// Returns true if the node responds to ping, false otherwise.
+// Uses a 5-second cache to reduce redundant network calls.
+func (n *ChordNode) IsNodeAlive(node *NodeAddress) bool {
+	if node == nil {
+		return false
+	}
+
+	// Self is always alive
+	if node.Equals(n.address) {
+		return true
+	}
+
+	// No remote client means we can't check
+	if n.remote == nil {
+		return false
+	}
+
+	nodeAddr := node.Address()
+
+	// Check cache first (read lock)
+	n.livenessCacheMu.RLock()
+	if cached, found := n.livenessCache[nodeAddr]; found {
+		age := time.Since(cached.timestamp)
+		if age < livenessCacheTTL {
+			// Cache hit - return cached result
+			n.livenessCacheMu.RUnlock()
+			return cached.alive
+		}
+	}
+	n.livenessCacheMu.RUnlock()
+
+	// Cache miss or expired - perform actual ping
+	_, err := n.remote.Ping(nodeAddr, pingMessageHealthCheck)
+	alive := err == nil
+
+	// Update cache with on-access cleanup (write lock)
+	n.livenessCacheMu.Lock()
+	now := time.Now()
+
+	// On-access cleanup: remove entries older than expiry threshold
+	// This prevents unbounded cache growth in dynamic rings
+	for addr, entry := range n.livenessCache {
+		if now.Sub(entry.timestamp) > livenessCacheExpiry {
+			delete(n.livenessCache, addr)
+		}
+	}
+
+	// Add/update current entry
+	n.livenessCache[nodeAddr] = livenessCacheEntry{
+		alive:     alive,
+		timestamp: now,
+	}
+	n.livenessCacheMu.Unlock()
+
+	return alive
+}
+
 // SetReplica stores a replica of a key on this node.
 // This is called by other nodes to store replicas for fault tolerance.
+// Deduplication: If the replica already exists with the same value, skip storage to prevent duplicates.
 func (n *ChordNode) SetReplica(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	if key == "" {
 		return fmt.Errorf("key cannot be empty")
+	}
+
+	// Check if replica already exists (deduplication)
+	existingValue, err := n.storage.GetReplica(ctx, key)
+	if err == nil && existingValue != nil {
+		// Replica already exists - check if value is the same using bytes.Equal
+		if bytes.Equal(existingValue, value) {
+			// Exact same replica already exists, skip duplicate storage
+			n.logger.Debug().
+				Str("key", key).
+				Msg("Replica already exists with same value, skipping duplicate")
+			return nil
+		}
+		// Value is different, update it
+		n.logger.Debug().
+			Str("key", key).
+			Msg("Replica exists with different value, updating")
 	}
 
 	if err := n.storage.SetReplica(ctx, key, value, ttl); err != nil {
@@ -1334,10 +1860,13 @@ func (n *ChordNode) replicateToSuccessors(ctx context.Context, key string, value
 	}
 
 	// Replicate to up to r successors (skip self)
+	// In a ring with N nodes, we can replicate to at most (N-1) other nodes
+	maxReplicas := min(n.config.SuccessorListSize, len(successors))
+
 	replicaCount := 0
 	for _, succ := range successors {
 		if succ.Equals(n.address) {
-			continue // Skip self
+			continue
 		}
 
 		// Try to replicate to this successor
@@ -1356,8 +1885,8 @@ func (n *ChordNode) replicateToSuccessors(ctx context.Context, key string, value
 				Msg("Replicated key to successor")
 		}
 
-		// Stop after replicating to r successors
-		if replicaCount >= n.config.SuccessorListSize {
+		// Stop after replicating to maxReplicas successors
+		if replicaCount >= maxReplicas {
 			break
 		}
 	}
@@ -1386,7 +1915,7 @@ func (n *ChordNode) deleteReplicasFromSuccessors(ctx context.Context, key string
 	// Delete replicas from successors (skip self)
 	for _, succ := range successors {
 		if succ.Equals(n.address) {
-			continue // Skip self
+			continue
 		}
 
 		// Try to delete replica from this successor
@@ -1404,4 +1933,506 @@ func (n *ChordNode) deleteReplicasFromSuccessors(ctx context.Context, key string
 				Msg("Deleted replica from successor")
 		}
 	}
+}
+
+// CleanupStaleReplicas removes replica keys that this node should no longer store.
+// A node should only store replicas if it's in the successor list of the key's responsible node.
+func (n *ChordNode) CleanupStaleReplicas(ctx context.Context) error {
+	// Skip cleanup if replication is currently in progress
+	if n.replicationInProgress.Load() {
+		n.logger.Debug().Msg("Skipping cleanup while replication is in progress")
+		return nil
+	}
+
+	// Skip cleanup if successor list changed recently (cooldown period)
+	n.lastSuccessorChangeMu.RLock()
+	timeSinceChange := time.Since(n.lastSuccessorChange)
+	n.lastSuccessorChangeMu.RUnlock()
+
+	if timeSinceChange < cleanupCooldownPeriod && !n.lastSuccessorChange.IsZero() {
+		n.logger.Debug().
+			Dur("time_since_change", timeSinceChange).
+			Dur("cooldown_period", cleanupCooldownPeriod).
+			Msg("Skipping cleanup during cooldown period after topology change")
+		return nil
+	}
+
+	// Simple safety net: warn only if replica count is absurdly high
+	replicaCount, _ := n.GetReplicaCount(context.Background())
+	primaryCount, _ := n.GetKeyCount(context.Background())
+
+	// Conservative heuristic: max expected replicas = primaryCount × replicationFactor × buffer
+	// The buffer accounts for transient states during stabilization
+	maxReasonable := primaryCount * n.config.SuccessorListSize * safetyNetBufferMultiplier
+
+	if primaryCount > 0 && replicaCount > maxReasonable && replicaCount > minReplicaCountThreshold {
+		n.logger.Warn().
+			Int("replica_count", replicaCount).
+			Int("primary_count", primaryCount).
+			Int("max_reasonable", maxReasonable).
+			Msg("Replica count unusually high, possible replication issue")
+	}
+
+	replicaKeys, err := n.storage.GetAllReplicaKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get replica keys: %w", err)
+	}
+
+	if len(replicaKeys) == 0 {
+		return nil // No replicas to clean up
+	}
+
+	n.logger.Debug().
+		Int("replica_count", len(replicaKeys)).
+		Msg("Starting cleanup of stale replicas")
+
+	var cleanedCount int
+	for _, key := range replicaKeys {
+		keyID := new(big.Int)
+		if _, ok := keyID.SetString(key, 16); !ok {
+			n.logger.Warn().
+				Str("key", key).
+				Msg("Invalid hex key in replica storage, skipping")
+			continue
+		}
+
+		// Find the node responsible for this key
+		responsible, err := n.FindSuccessor(keyID)
+		if err != nil {
+			n.logger.Warn().
+				Err(err).
+				Str("key", key).
+				Msg("Failed to find responsible node for replica, skipping")
+			continue
+		}
+
+		// Check if we should be storing this replica
+		shouldStore := false
+
+		// IMPORTANT: Check grace period BEFORE self-owned replica check
+		// During stabilization, FindSuccessor() might return incorrect results,
+		// so we need to respect grace period even for self-owned replicas
+		if n.remote != nil {
+			// Track when we first see this node and check grace period
+			nodeAddr := responsible.Address()
+			n.firstSeenMu.Lock()
+			firstSeen, exists := n.firstSeenNodes[nodeAddr]
+			now := time.Now()
+			if !exists {
+				// First time seeing this node, record the timestamp
+				firstSeen = now
+				n.firstSeenNodes[nodeAddr] = firstSeen
+			} else if now.Sub(firstSeen) > nodeTrackingExpiry {
+				// On-access cleanup: entry is expired, remove and treat as new
+				delete(n.firstSeenNodes, nodeAddr)
+				firstSeen = now
+				n.firstSeenNodes[nodeAddr] = firstSeen
+			}
+			n.firstSeenMu.Unlock()
+
+			// Check if the node is within grace period
+			nodeAge := now.Sub(firstSeen)
+			if nodeAge < newNodeGracePeriod {
+				// Node is too new, don't trust its successor list yet
+				// Keep the replica (it will be cleaned up later if truly stale)
+				n.logger.Debug().
+					Str("key", key).
+					Str("responsible", nodeAddr).
+					Dur("node_age", nodeAge).
+					Dur("grace_period", newNodeGracePeriod).
+					Msg("Node within grace period, keeping replica")
+				shouldStore = true
+				continue // Move to next replica
+			}
+		}
+
+		// Now check if we are the responsible node (after grace period check)
+		// We should store a replica if:
+		// We are the responsible node (shouldn't happen for replicas, but check anyway)
+		if responsible.Equals(n.address) {
+			// This shouldn't happen - replicas are stored on successors, not the primary
+			n.logger.Warn().
+				Str("key", key).
+				Msg("Found replica for key we're responsible for, removing")
+			shouldStore = false
+		} else if n.remote != nil {
+			nodeAddr := responsible.Address()
+
+			// Node is stable (past grace period), verify replica using successor list
+			// Try once with a single retry to handle transient failures
+			successorList, err := n.remote.GetSuccessorList(nodeAddr)
+			if err != nil {
+				// Retry once after brief delay
+				time.Sleep(cleanupRetryDelay)
+				successorList, err = n.remote.GetSuccessorList(nodeAddr)
+			}
+
+			if err == nil {
+				// Success - check if we're in the FIRST r successors
+				// Replicas are only stored on the first r successors, not all successors
+				replicationFactor := n.config.SuccessorListSize
+				maxReplicas := min(len(successorList), replicationFactor)
+
+				// Check if we're in positions [0, maxReplicas-1]
+				myPosition := -1
+				for i := 0; i < maxReplicas && i < len(successorList); i++ {
+					if successorList[i].Equals(n.address) {
+						shouldStore = true
+						myPosition = i
+						break
+					}
+				}
+
+				n.logger.Debug().
+					Str("key", key).
+					Str("responsible", responsible.Address()).
+					Int("successor_list_len", len(successorList)).
+					Int("max_replicas", maxReplicas).
+					Int("my_position", myPosition).
+					Bool("should_store", shouldStore).
+					Msg("Checked replica position in successor list")
+			} else {
+				// Both attempts failed - delete the replica (aggressive cleanup)
+				// Coordinated replication will recreate it if truly needed
+				n.logger.Debug().
+					Err(err).
+					Str("key", key).
+					Str("responsible", responsible.Address()).
+					Msg("Failed to verify replica after retry, deleting (will be recreated if needed)")
+				shouldStore = false
+			}
+		}
+
+		// Delete the replica if we shouldn't store it
+		if !shouldStore {
+			if err := n.storage.DeleteReplica(ctx, key); err != nil {
+				n.logger.Warn().
+					Err(err).
+					Str("key", key).
+					Msg("Failed to delete stale replica")
+			} else {
+				cleanedCount++
+				n.logger.Debug().
+					Str("key", key).
+					Str("responsible", responsible.Address()).
+					Msg("Deleted stale replica")
+			}
+		}
+	}
+
+	if cleanedCount > 0 {
+		n.logger.Info().
+			Int("cleaned_count", cleanedCount).
+			Int("total_replicas", len(replicaKeys)).
+			Msg("Cleaned up stale replicas")
+	}
+
+	return nil
+}
+
+// cleanDeadNodesFromFingerTable removes dead nodes from the finger table.
+// This is called during stabilization to keep the finger table accurate.
+// Uses deduplication to minimize network calls - checks each unique node only once.
+func (n *ChordNode) cleanDeadNodesFromFingerTable() {
+	n.fingerMu.Lock()
+	defer n.fingerMu.Unlock()
+
+	if n.remote == nil || n.fingerTable == nil {
+		return
+	}
+
+	// Deduplicate - many finger entries point to the same node
+	uniqueNodes := make(map[string]*NodeAddress)
+	for i := 0; i < len(n.fingerTable); i++ {
+		if n.fingerTable[i].Node == nil {
+			continue
+		}
+
+		// Skip self references
+		if n.fingerTable[i].Node.Equals(n.address) {
+			continue
+		}
+
+		// Collect unique nodes (key is the address string)
+		uniqueNodes[n.fingerTable[i].Node.Address()] = n.fingerTable[i].Node
+	}
+
+	if len(uniqueNodes) == 0 {
+		return
+	}
+
+	n.logger.Debug().
+		Int("total_entries", len(n.fingerTable)).
+		Int("unique_nodes", len(uniqueNodes)).
+		Msg("Checking finger table nodes for liveness")
+
+	// Check only unique nodes for liveness (not all 160 entries!)
+	deadNodes := make(map[string]bool)
+	for addr, node := range uniqueNodes {
+		if !n.IsNodeAlive(node) {
+			deadNodes[addr] = true
+			n.logger.Debug().
+				Str("dead_node", addr).
+				Msg("Found dead node in finger table")
+		}
+	}
+
+	if len(deadNodes) == 0 {
+		return
+	}
+
+	// Clean all finger entries pointing to dead nodes
+	cleanedCount := 0
+	for i := 0; i < len(n.fingerTable); i++ {
+		if n.fingerTable[i].Node == nil {
+			continue
+		}
+
+		// Check if this entry points to a dead node
+		if deadNodes[n.fingerTable[i].Node.Address()] {
+			n.logger.Debug().
+				Int("finger_index", i).
+				Str("dead_node", n.fingerTable[i].Node.Address()).
+				Msg("Removing dead node from finger entry")
+
+			n.fingerTable[i].Node = nil
+			cleanedCount++
+		}
+	}
+
+	if cleanedCount > 0 {
+		n.logger.Info().
+			Int("cleaned_entries", cleanedCount).
+			Int("dead_nodes", len(deadNodes)).
+			Int("unique_nodes_checked", len(uniqueNodes)).
+			Msg("Cleaned dead nodes from finger table")
+
+		// Trigger finger table update to find replacements
+		go n.fixFingers()
+	}
+}
+
+// successorListChanged compares two successor lists to detect changes.
+func (n *ChordNode) successorListChanged(oldList, newList []*NodeAddress) bool {
+	if len(oldList) != len(newList) {
+		return true
+	}
+
+	// Check if all nodes are the same (order matters for replication)
+	for i := 0; i < len(oldList); i++ {
+		if oldList[i] == nil && newList[i] == nil {
+			continue
+		}
+		if oldList[i] == nil || newList[i] == nil {
+			return true
+		}
+		if !oldList[i].Equals(newList[i]) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// deleteStaleReplicasFromSuccessors tells nodes that are no longer in our successor list
+// to delete replicas of keys we own. This is part of idempotent re-replication.
+func (n *ChordNode) deleteStaleReplicasFromSuccessors(oldSuccessors, newSuccessors []*NodeAddress) {
+	if n.remote == nil {
+		return
+	}
+
+	// Find successors that are in OLD list but NOT in NEW list
+	staleSuccessors := make([]*NodeAddress, 0)
+	for _, oldSucc := range oldSuccessors {
+		found := false
+		for _, newSucc := range newSuccessors {
+			if oldSucc.Equals(newSucc) {
+				found = true
+				break
+			}
+		}
+		if !found && !oldSucc.Equals(n.address) {
+			staleSuccessors = append(staleSuccessors, oldSucc)
+		}
+	}
+
+	oldAddrs := make([]string, len(oldSuccessors))
+	for i, s := range oldSuccessors {
+		oldAddrs[i] = s.Address()
+	}
+	newAddrs := make([]string, len(newSuccessors))
+	for i, s := range newSuccessors {
+		newAddrs[i] = s.Address()
+	}
+	staleAddrs := make([]string, len(staleSuccessors))
+	for i, s := range staleSuccessors {
+		staleAddrs[i] = s.Address()
+	}
+	n.logger.Info().
+		Strs("old_successors", oldAddrs).
+		Strs("new_successors", newAddrs).
+		Strs("stale_successors", staleAddrs).
+		Msg("Successor list comparison for stale deletion")
+
+	if len(staleSuccessors) == 0 {
+		n.logger.Info().Msg("No stale successors found - all old successors are still in new list")
+		return
+	}
+
+	n.logger.Info().
+		Int("stale_successor_count", len(staleSuccessors)).
+		Msg("Deleting replicas from nodes no longer in successor list")
+
+	// Get all primary keys we own
+	ctx, cancel := context.WithTimeout(context.Background(), replicationTimeout)
+	defer cancel()
+
+	allKeys, err := n.storage.GetAll(ctx)
+	if err != nil {
+		n.logger.Error().Err(err).Msg("Failed to get keys for replica deletion")
+		return
+	}
+
+	// For each stale successor, tell it to delete replicas of our keys
+	for _, staleSucc := range staleSuccessors {
+		deletedCount := 0
+		for hashedKey := range allKeys {
+			// Skip replica keys and chord metadata
+			if len(hashedKey) >= len(replicaKeyPrefix) && hashedKey[:len(replicaKeyPrefix)] == replicaKeyPrefix {
+				continue
+			}
+			if len(hashedKey) >= len(chordKeyPrefix) && hashedKey[:len(chordKeyPrefix)] == chordKeyPrefix {
+				continue
+			}
+
+			// Convert hashed key back to key ID
+			keyID := new(big.Int)
+			_, success := keyID.SetString(hashedKey, 16)
+			if !success {
+				continue
+			}
+
+			// Verify we're still responsible for this key
+			responsible, err := n.FindSuccessor(keyID)
+			if err != nil || responsible == nil || !responsible.Equals(n.address) {
+				continue // We're not the owner, skip
+			}
+
+			// Tell the stale successor to delete this replica
+			if err := n.remote.DeleteReplica(ctx, staleSucc.Address(), hashedKey); err != nil {
+				n.logger.Debug().
+					Err(err).
+					Str("key", truncateHex(hashedKey, hexDisplayLength)).
+					Str("successor", staleSucc.Address()).
+					Msg("Failed to delete replica from stale successor")
+			} else {
+				deletedCount++
+			}
+		}
+
+		n.logger.Info().
+			Int("deleted_count", deletedCount).
+			Str("successor", staleSucc.Address()).
+			Msg("Deleted replicas from stale successor")
+	}
+}
+
+// replicateOwnedPrimaryKeys re-replicates ONLY the primary keys this node owns.
+// This is more selective than replicateAllKeys and prevents duplicate replicas
+// when multiple nodes' successor lists change simultaneously.
+// Uses idempotent approach: deletes old replicas before creating new ones.
+func (n *ChordNode) replicateOwnedPrimaryKeys() {
+	// Mark replication as in progress
+	n.replicationInProgress.Store(true)
+	defer n.replicationInProgress.Store(false)
+
+	ctx := context.Background()
+
+	n.logger.Info().Msg("Starting idempotent replication of owned primary keys")
+
+	// Delete stale replicas from old successors (idempotent approach)
+	n.oldSuccessorListMu.RLock()
+	oldSuccessors := make([]*NodeAddress, len(n.oldSuccessorList))
+	copy(oldSuccessors, n.oldSuccessorList)
+	n.oldSuccessorListMu.RUnlock()
+
+	newSuccessors := n.getSuccessorList()
+
+	n.logger.Info().
+		Int("old_successor_count", len(oldSuccessors)).
+		Int("new_successor_count", len(newSuccessors)).
+		Msg("Idempotent replication: checking for stale successors")
+
+	if len(oldSuccessors) > 0 {
+		n.deleteStaleReplicasFromSuccessors(oldSuccessors, newSuccessors)
+	} else {
+		n.logger.Warn().Msg("No old successor list recorded - skipping stale deletion (this is expected on first re-replication)")
+	}
+
+	// Create fresh replicas on current successors
+	n.logger.Debug().Msg("Creating fresh replicas on current successors")
+
+	allKeys, err := n.storage.GetAll(ctx)
+	if err != nil {
+		n.logger.Error().Err(err).Msg("Failed to get all keys for re-replication")
+		return
+	}
+
+	// Filter to only primary keys that we actually own
+	ownedKeyCount := 0
+	replicatedCount := 0
+
+	for hashedKey, value := range allKeys {
+		// Skip replica keys
+		if len(hashedKey) >= len(replicaKeyPrefix) && hashedKey[:len(replicaKeyPrefix)] == replicaKeyPrefix {
+			continue
+		}
+
+		// Skip Chord metadata keys
+		if len(hashedKey) >= len(chordKeyPrefix) && hashedKey[:len(chordKeyPrefix)] == chordKeyPrefix {
+			continue
+		}
+
+		keyID := new(big.Int)
+		_, success := keyID.SetString(hashedKey, 16)
+		if !success {
+			continue
+		}
+
+		// Double-check that we're the responsible node for this key
+		// This is crucial for coordinated replication - only the true owner replicates
+		responsible, err := n.FindSuccessor(keyID)
+		if err != nil || responsible == nil || !responsible.Equals(n.address) {
+			// We're not the owner, skip replication
+			continue
+		}
+
+		ownedKeyCount++
+
+		// Replicate to our successors
+		n.replicateToSuccessors(ctx, hashedKey, value, 0)
+		replicatedCount++
+
+		// Add small delay to avoid overwhelming the network
+		if replicatedCount%replicationBatchSize == 0 {
+			time.Sleep(replicationThrottleDelay)
+		}
+	}
+
+	n.logger.Info().
+		Int("owned_keys", ownedKeyCount).
+		Int("replicated_keys", replicatedCount).
+		Msg("Completed coordinated replication of owned primary keys")
+}
+
+// IsResponsibleForKey checks if this node is responsible for storing a key.
+func (n *ChordNode) IsResponsibleForKey(keyID *big.Int) bool {
+	pred := n.getPredecessor()
+	if pred == nil {
+		// We're the only node or don't know our predecessor
+		return true
+	}
+
+	// We're responsible if key is in range (predecessor, us]
+	return hash.InRange(keyID, pred.ID, n.id)
 }

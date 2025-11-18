@@ -57,4 +57,21 @@ type RemoteClient interface {
 
 	// DeleteReplica calls the DeleteReplica RPC on a remote node to delete a replica.
 	DeleteReplica(ctx context.Context, address string, key string) error
+
+	// BulkStore calls the BulkStore RPC on a remote node to store multiple key-value pairs.
+	// Used for efficient bulk transfer during node join/leave operations.
+	BulkStore(ctx context.Context, address string, items map[string][]byte) error
+
+	// StoreReplica stores a replica of a key-value pair on a remote node.
+	// Unlike SetReplica, this stores with the original key name for replication purposes.
+	StoreReplica(ctx context.Context, address string, key string, value []byte) error
+
+	// NotifyPredecessorLeaving notifies a predecessor that we're leaving and it should update its successor.
+	NotifyPredecessorLeaving(ctx context.Context, address string, newSuccessor *NodeAddress) error
+
+	// NotifySuccessorLeaving notifies a successor that we're leaving and it should update its predecessor.
+	NotifySuccessorLeaving(ctx context.Context, address string, newPredecessor *NodeAddress) error
+
+	// NotifyNodeLeaving notifies a node in the successor list about our departure.
+	NotifyNodeLeaving(ctx context.Context, address string, leavingNode *NodeAddress) error
 }

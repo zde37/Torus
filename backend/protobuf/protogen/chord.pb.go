@@ -33,8 +33,10 @@ type Node struct {
 	Port int32 `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
 	// HTTP API port
 	HttpPort int32 `protobuf:"varint,4,opt,name=http_port,json=httpPort,proto3" json:"http_port,omitempty"`
-	// Number of user keys stored (excluding Chord metadata)
-	KeyCount      int32 `protobuf:"varint,5,opt,name=key_count,json=keyCount,proto3" json:"key_count,omitempty"`
+	// Number of primary user keys stored (excluding Chord metadata and replica keys)
+	KeyCount int32 `protobuf:"varint,5,opt,name=key_count,json=keyCount,proto3" json:"key_count,omitempty"`
+	// Number of replica keys stored on this node
+	ReplicaCount  int32 `protobuf:"varint,6,opt,name=replica_count,json=replicaCount,proto3" json:"replica_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -100,6 +102,13 @@ func (x *Node) GetHttpPort() int32 {
 func (x *Node) GetKeyCount() int32 {
 	if x != nil {
 		return x.KeyCount
+	}
+	return 0
+}
+
+func (x *Node) GetReplicaCount() int32 {
+	if x != nil {
+		return x.ReplicaCount
 	}
 	return 0
 }
@@ -1996,17 +2005,404 @@ func (x *GetFingerTableResponse) GetEntries() []*FingerTableEntry {
 	return nil
 }
 
+// BulkStoreRequest contains multiple key-value pairs to store.
+type BulkStoreRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Map of keys to values
+	Items         map[string][]byte `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BulkStoreRequest) Reset() {
+	*x = BulkStoreRequest{}
+	mi := &file_chord_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BulkStoreRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BulkStoreRequest) ProtoMessage() {}
+
+func (x *BulkStoreRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_chord_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BulkStoreRequest.ProtoReflect.Descriptor instead.
+func (*BulkStoreRequest) Descriptor() ([]byte, []int) {
+	return file_chord_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *BulkStoreRequest) GetItems() map[string][]byte {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+// BulkStoreResponse confirms bulk storage.
+type BulkStoreResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the operation was successful
+	Success bool `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	// Number of items stored
+	Count int32 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	// Optional error message for failed items
+	Error         string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BulkStoreResponse) Reset() {
+	*x = BulkStoreResponse{}
+	mi := &file_chord_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BulkStoreResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BulkStoreResponse) ProtoMessage() {}
+
+func (x *BulkStoreResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_chord_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BulkStoreResponse.ProtoReflect.Descriptor instead.
+func (*BulkStoreResponse) Descriptor() ([]byte, []int) {
+	return file_chord_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *BulkStoreResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *BulkStoreResponse) GetCount() int32 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+func (x *BulkStoreResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+// NotifyPredecessorLeavingRequest notifies predecessor about node leaving.
+type NotifyPredecessorLeavingRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The new successor after the leaving node
+	NewSuccessor  *Node `protobuf:"bytes,1,opt,name=new_successor,json=newSuccessor,proto3" json:"new_successor,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotifyPredecessorLeavingRequest) Reset() {
+	*x = NotifyPredecessorLeavingRequest{}
+	mi := &file_chord_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotifyPredecessorLeavingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotifyPredecessorLeavingRequest) ProtoMessage() {}
+
+func (x *NotifyPredecessorLeavingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_chord_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotifyPredecessorLeavingRequest.ProtoReflect.Descriptor instead.
+func (*NotifyPredecessorLeavingRequest) Descriptor() ([]byte, []int) {
+	return file_chord_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *NotifyPredecessorLeavingRequest) GetNewSuccessor() *Node {
+	if x != nil {
+		return x.NewSuccessor
+	}
+	return nil
+}
+
+// NotifyPredecessorLeavingResponse acknowledges the notification.
+type NotifyPredecessorLeavingResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the notification was processed successfully
+	Success       bool `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotifyPredecessorLeavingResponse) Reset() {
+	*x = NotifyPredecessorLeavingResponse{}
+	mi := &file_chord_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotifyPredecessorLeavingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotifyPredecessorLeavingResponse) ProtoMessage() {}
+
+func (x *NotifyPredecessorLeavingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_chord_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotifyPredecessorLeavingResponse.ProtoReflect.Descriptor instead.
+func (*NotifyPredecessorLeavingResponse) Descriptor() ([]byte, []int) {
+	return file_chord_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *NotifyPredecessorLeavingResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+// NotifySuccessorLeavingRequest notifies successor about node leaving.
+type NotifySuccessorLeavingRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The new predecessor after the leaving node
+	NewPredecessor *Node `protobuf:"bytes,1,opt,name=new_predecessor,json=newPredecessor,proto3" json:"new_predecessor,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *NotifySuccessorLeavingRequest) Reset() {
+	*x = NotifySuccessorLeavingRequest{}
+	mi := &file_chord_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotifySuccessorLeavingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotifySuccessorLeavingRequest) ProtoMessage() {}
+
+func (x *NotifySuccessorLeavingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_chord_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotifySuccessorLeavingRequest.ProtoReflect.Descriptor instead.
+func (*NotifySuccessorLeavingRequest) Descriptor() ([]byte, []int) {
+	return file_chord_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *NotifySuccessorLeavingRequest) GetNewPredecessor() *Node {
+	if x != nil {
+		return x.NewPredecessor
+	}
+	return nil
+}
+
+// NotifySuccessorLeavingResponse acknowledges the notification.
+type NotifySuccessorLeavingResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the notification was processed successfully
+	Success       bool `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotifySuccessorLeavingResponse) Reset() {
+	*x = NotifySuccessorLeavingResponse{}
+	mi := &file_chord_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotifySuccessorLeavingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotifySuccessorLeavingResponse) ProtoMessage() {}
+
+func (x *NotifySuccessorLeavingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_chord_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotifySuccessorLeavingResponse.ProtoReflect.Descriptor instead.
+func (*NotifySuccessorLeavingResponse) Descriptor() ([]byte, []int) {
+	return file_chord_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *NotifySuccessorLeavingResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+// NotifyNodeLeavingRequest notifies a node about another node leaving.
+type NotifyNodeLeavingRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The node that is leaving
+	LeavingNode   *Node `protobuf:"bytes,1,opt,name=leaving_node,json=leavingNode,proto3" json:"leaving_node,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotifyNodeLeavingRequest) Reset() {
+	*x = NotifyNodeLeavingRequest{}
+	mi := &file_chord_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotifyNodeLeavingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotifyNodeLeavingRequest) ProtoMessage() {}
+
+func (x *NotifyNodeLeavingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_chord_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotifyNodeLeavingRequest.ProtoReflect.Descriptor instead.
+func (*NotifyNodeLeavingRequest) Descriptor() ([]byte, []int) {
+	return file_chord_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *NotifyNodeLeavingRequest) GetLeavingNode() *Node {
+	if x != nil {
+		return x.LeavingNode
+	}
+	return nil
+}
+
+// NotifyNodeLeavingResponse acknowledges the notification.
+type NotifyNodeLeavingResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether the notification was processed successfully
+	Success       bool `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *NotifyNodeLeavingResponse) Reset() {
+	*x = NotifyNodeLeavingResponse{}
+	mi := &file_chord_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NotifyNodeLeavingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NotifyNodeLeavingResponse) ProtoMessage() {}
+
+func (x *NotifyNodeLeavingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_chord_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NotifyNodeLeavingResponse.ProtoReflect.Descriptor instead.
+func (*NotifyNodeLeavingResponse) Descriptor() ([]byte, []int) {
+	return file_chord_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *NotifyNodeLeavingResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
 var File_chord_proto protoreflect.FileDescriptor
 
 const file_chord_proto_rawDesc = "" +
 	"\n" +
-	"\vchord.proto\x12\bprotogen\x1a\x1cgoogle/api/annotations.proto\"x\n" +
+	"\vchord.proto\x12\bprotogen\x1a\x1cgoogle/api/annotations.proto\"\x9d\x01\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
 	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x1b\n" +
 	"\thttp_port\x18\x04 \x01(\x05R\bhttpPort\x12\x1b\n" +
-	"\tkey_count\x18\x05 \x01(\x05R\bkeyCount\"&\n" +
+	"\tkey_count\x18\x05 \x01(\x05R\bkeyCount\x12#\n" +
+	"\rreplica_count\x18\x06 \x01(\x05R\freplicaCount\"&\n" +
 	"\x14FindSuccessorRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\fR\x02id\"E\n" +
 	"\x15FindSuccessorResponse\x12,\n" +
@@ -2105,7 +2501,29 @@ const file_chord_proto_rawDesc = "" +
 	"\x04node\x18\x02 \x01(\v2\x0e.protogen.NodeR\x04node\x12\x14\n" +
 	"\x05index\x18\x03 \x01(\x05R\x05index\"N\n" +
 	"\x16GetFingerTableResponse\x124\n" +
-	"\aentries\x18\x01 \x03(\v2\x1a.protogen.FingerTableEntryR\aentries2\xf2\f\n" +
+	"\aentries\x18\x01 \x03(\v2\x1a.protogen.FingerTableEntryR\aentries\"\x89\x01\n" +
+	"\x10BulkStoreRequest\x12;\n" +
+	"\x05items\x18\x01 \x03(\v2%.protogen.BulkStoreRequest.ItemsEntryR\x05items\x1a8\n" +
+	"\n" +
+	"ItemsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value:\x028\x01\"Y\n" +
+	"\x11BulkStoreResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05count\x18\x02 \x01(\x05R\x05count\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"V\n" +
+	"\x1fNotifyPredecessorLeavingRequest\x123\n" +
+	"\rnew_successor\x18\x01 \x01(\v2\x0e.protogen.NodeR\fnewSuccessor\"<\n" +
+	" NotifyPredecessorLeavingResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"X\n" +
+	"\x1dNotifySuccessorLeavingRequest\x127\n" +
+	"\x0fnew_predecessor\x18\x01 \x01(\v2\x0e.protogen.NodeR\x0enewPredecessor\":\n" +
+	"\x1eNotifySuccessorLeavingResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"M\n" +
+	"\x18NotifyNodeLeavingRequest\x121\n" +
+	"\fleaving_node\x18\x01 \x01(\v2\x0e.protogen.NodeR\vleavingNode\"5\n" +
+	"\x19NotifyNodeLeavingResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess2\xf6\x0f\n" +
 	"\fChordService\x12P\n" +
 	"\rFindSuccessor\x12\x1e.protogen.FindSuccessorRequest\x1a\x1f.protogen.FindSuccessorResponse\x12h\n" +
 	"\x15FindSuccessorWithPath\x12&.protogen.FindSuccessorWithPathRequest\x1a'.protogen.FindSuccessorWithPathResponse\x12r\n" +
@@ -2127,7 +2545,11 @@ const file_chord_proto_rawDesc = "" +
 	"SetReplica\x12\x1b.protogen.SetReplicaRequest\x1a\x1c.protogen.SetReplicaResponse\x12G\n" +
 	"\n" +
 	"GetReplica\x12\x1b.protogen.GetReplicaRequest\x1a\x1c.protogen.GetReplicaResponse\x12P\n" +
-	"\rDeleteReplica\x12\x1e.protogen.DeleteReplicaRequest\x1a\x1f.protogen.DeleteReplicaResponseB*Z(github.com/zde37/torus/protobuf/protogenb\x06proto3"
+	"\rDeleteReplica\x12\x1e.protogen.DeleteReplicaRequest\x1a\x1f.protogen.DeleteReplicaResponse\x12D\n" +
+	"\tBulkStore\x12\x1a.protogen.BulkStoreRequest\x1a\x1b.protogen.BulkStoreResponse\x12q\n" +
+	"\x18NotifyPredecessorLeaving\x12).protogen.NotifyPredecessorLeavingRequest\x1a*.protogen.NotifyPredecessorLeavingResponse\x12k\n" +
+	"\x16NotifySuccessorLeaving\x12'.protogen.NotifySuccessorLeavingRequest\x1a(.protogen.NotifySuccessorLeavingResponse\x12\\\n" +
+	"\x11NotifyNodeLeaving\x12\".protogen.NotifyNodeLeavingRequest\x1a#.protogen.NotifyNodeLeavingResponseB*Z(github.com/zde37/torus/protobuf/protogenb\x06proto3"
 
 var (
 	file_chord_proto_rawDescOnce sync.Once
@@ -2141,47 +2563,56 @@ func file_chord_proto_rawDescGZIP() []byte {
 	return file_chord_proto_rawDescData
 }
 
-var file_chord_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
+var file_chord_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
 var file_chord_proto_goTypes = []any{
-	(*Node)(nil),                           // 0: protogen.Node
-	(*FindSuccessorRequest)(nil),           // 1: protogen.FindSuccessorRequest
-	(*FindSuccessorResponse)(nil),          // 2: protogen.FindSuccessorResponse
-	(*FindSuccessorWithPathRequest)(nil),   // 3: protogen.FindSuccessorWithPathRequest
-	(*FindSuccessorWithPathResponse)(nil),  // 4: protogen.FindSuccessorWithPathResponse
-	(*GetPredecessorRequest)(nil),          // 5: protogen.GetPredecessorRequest
-	(*GetPredecessorResponse)(nil),         // 6: protogen.GetPredecessorResponse
-	(*NotifyRequest)(nil),                  // 7: protogen.NotifyRequest
-	(*NotifyResponse)(nil),                 // 8: protogen.NotifyResponse
-	(*GetSuccessorListRequest)(nil),        // 9: protogen.GetSuccessorListRequest
-	(*GetSuccessorListResponse)(nil),       // 10: protogen.GetSuccessorListResponse
-	(*PingRequest)(nil),                    // 11: protogen.PingRequest
-	(*PingResponse)(nil),                   // 12: protogen.PingResponse
-	(*GetNodeInfoRequest)(nil),             // 13: protogen.GetNodeInfoRequest
-	(*GetNodeInfoResponse)(nil),            // 14: protogen.GetNodeInfoResponse
-	(*GetRequest)(nil),                     // 15: protogen.GetRequest
-	(*GetResponse)(nil),                    // 16: protogen.GetResponse
-	(*SetRequest)(nil),                     // 17: protogen.SetRequest
-	(*SetResponse)(nil),                    // 18: protogen.SetResponse
-	(*DeleteRequest)(nil),                  // 19: protogen.DeleteRequest
-	(*DeleteResponse)(nil),                 // 20: protogen.DeleteResponse
-	(*SetReplicaRequest)(nil),              // 21: protogen.SetReplicaRequest
-	(*SetReplicaResponse)(nil),             // 22: protogen.SetReplicaResponse
-	(*GetReplicaRequest)(nil),              // 23: protogen.GetReplicaRequest
-	(*GetReplicaResponse)(nil),             // 24: protogen.GetReplicaResponse
-	(*DeleteReplicaRequest)(nil),           // 25: protogen.DeleteReplicaRequest
-	(*DeleteReplicaResponse)(nil),          // 26: protogen.DeleteReplicaResponse
-	(*ClosestPrecedingFingerRequest)(nil),  // 27: protogen.ClosestPrecedingFingerRequest
-	(*ClosestPrecedingFingerResponse)(nil), // 28: protogen.ClosestPrecedingFingerResponse
-	(*TransferKeysRequest)(nil),            // 29: protogen.TransferKeysRequest
-	(*KeyValuePair)(nil),                   // 30: protogen.KeyValuePair
-	(*TransferKeysResponse)(nil),           // 31: protogen.TransferKeysResponse
-	(*DeleteTransferredKeysRequest)(nil),   // 32: protogen.DeleteTransferredKeysRequest
-	(*DeleteTransferredKeysResponse)(nil),  // 33: protogen.DeleteTransferredKeysResponse
-	(*LookupPathRequest)(nil),              // 34: protogen.LookupPathRequest
-	(*LookupPathResponse)(nil),             // 35: protogen.LookupPathResponse
-	(*GetFingerTableRequest)(nil),          // 36: protogen.GetFingerTableRequest
-	(*FingerTableEntry)(nil),               // 37: protogen.FingerTableEntry
-	(*GetFingerTableResponse)(nil),         // 38: protogen.GetFingerTableResponse
+	(*Node)(nil),                             // 0: protogen.Node
+	(*FindSuccessorRequest)(nil),             // 1: protogen.FindSuccessorRequest
+	(*FindSuccessorResponse)(nil),            // 2: protogen.FindSuccessorResponse
+	(*FindSuccessorWithPathRequest)(nil),     // 3: protogen.FindSuccessorWithPathRequest
+	(*FindSuccessorWithPathResponse)(nil),    // 4: protogen.FindSuccessorWithPathResponse
+	(*GetPredecessorRequest)(nil),            // 5: protogen.GetPredecessorRequest
+	(*GetPredecessorResponse)(nil),           // 6: protogen.GetPredecessorResponse
+	(*NotifyRequest)(nil),                    // 7: protogen.NotifyRequest
+	(*NotifyResponse)(nil),                   // 8: protogen.NotifyResponse
+	(*GetSuccessorListRequest)(nil),          // 9: protogen.GetSuccessorListRequest
+	(*GetSuccessorListResponse)(nil),         // 10: protogen.GetSuccessorListResponse
+	(*PingRequest)(nil),                      // 11: protogen.PingRequest
+	(*PingResponse)(nil),                     // 12: protogen.PingResponse
+	(*GetNodeInfoRequest)(nil),               // 13: protogen.GetNodeInfoRequest
+	(*GetNodeInfoResponse)(nil),              // 14: protogen.GetNodeInfoResponse
+	(*GetRequest)(nil),                       // 15: protogen.GetRequest
+	(*GetResponse)(nil),                      // 16: protogen.GetResponse
+	(*SetRequest)(nil),                       // 17: protogen.SetRequest
+	(*SetResponse)(nil),                      // 18: protogen.SetResponse
+	(*DeleteRequest)(nil),                    // 19: protogen.DeleteRequest
+	(*DeleteResponse)(nil),                   // 20: protogen.DeleteResponse
+	(*SetReplicaRequest)(nil),                // 21: protogen.SetReplicaRequest
+	(*SetReplicaResponse)(nil),               // 22: protogen.SetReplicaResponse
+	(*GetReplicaRequest)(nil),                // 23: protogen.GetReplicaRequest
+	(*GetReplicaResponse)(nil),               // 24: protogen.GetReplicaResponse
+	(*DeleteReplicaRequest)(nil),             // 25: protogen.DeleteReplicaRequest
+	(*DeleteReplicaResponse)(nil),            // 26: protogen.DeleteReplicaResponse
+	(*ClosestPrecedingFingerRequest)(nil),    // 27: protogen.ClosestPrecedingFingerRequest
+	(*ClosestPrecedingFingerResponse)(nil),   // 28: protogen.ClosestPrecedingFingerResponse
+	(*TransferKeysRequest)(nil),              // 29: protogen.TransferKeysRequest
+	(*KeyValuePair)(nil),                     // 30: protogen.KeyValuePair
+	(*TransferKeysResponse)(nil),             // 31: protogen.TransferKeysResponse
+	(*DeleteTransferredKeysRequest)(nil),     // 32: protogen.DeleteTransferredKeysRequest
+	(*DeleteTransferredKeysResponse)(nil),    // 33: protogen.DeleteTransferredKeysResponse
+	(*LookupPathRequest)(nil),                // 34: protogen.LookupPathRequest
+	(*LookupPathResponse)(nil),               // 35: protogen.LookupPathResponse
+	(*GetFingerTableRequest)(nil),            // 36: protogen.GetFingerTableRequest
+	(*FingerTableEntry)(nil),                 // 37: protogen.FingerTableEntry
+	(*GetFingerTableResponse)(nil),           // 38: protogen.GetFingerTableResponse
+	(*BulkStoreRequest)(nil),                 // 39: protogen.BulkStoreRequest
+	(*BulkStoreResponse)(nil),                // 40: protogen.BulkStoreResponse
+	(*NotifyPredecessorLeavingRequest)(nil),  // 41: protogen.NotifyPredecessorLeavingRequest
+	(*NotifyPredecessorLeavingResponse)(nil), // 42: protogen.NotifyPredecessorLeavingResponse
+	(*NotifySuccessorLeavingRequest)(nil),    // 43: protogen.NotifySuccessorLeavingRequest
+	(*NotifySuccessorLeavingResponse)(nil),   // 44: protogen.NotifySuccessorLeavingResponse
+	(*NotifyNodeLeavingRequest)(nil),         // 45: protogen.NotifyNodeLeavingRequest
+	(*NotifyNodeLeavingResponse)(nil),        // 46: protogen.NotifyNodeLeavingResponse
+	nil,                                      // 47: protogen.BulkStoreRequest.ItemsEntry
 }
 var file_chord_proto_depIdxs = []int32{
 	0,  // 0: protogen.FindSuccessorResponse.successor:type_name -> protogen.Node
@@ -2197,47 +2628,59 @@ var file_chord_proto_depIdxs = []int32{
 	0,  // 10: protogen.LookupPathResponse.path:type_name -> protogen.Node
 	0,  // 11: protogen.FingerTableEntry.node:type_name -> protogen.Node
 	37, // 12: protogen.GetFingerTableResponse.entries:type_name -> protogen.FingerTableEntry
-	1,  // 13: protogen.ChordService.FindSuccessor:input_type -> protogen.FindSuccessorRequest
-	3,  // 14: protogen.ChordService.FindSuccessorWithPath:input_type -> protogen.FindSuccessorWithPathRequest
-	5,  // 15: protogen.ChordService.GetPredecessor:input_type -> protogen.GetPredecessorRequest
-	7,  // 16: protogen.ChordService.Notify:input_type -> protogen.NotifyRequest
-	9,  // 17: protogen.ChordService.GetSuccessorList:input_type -> protogen.GetSuccessorListRequest
-	11, // 18: protogen.ChordService.Ping:input_type -> protogen.PingRequest
-	13, // 19: protogen.ChordService.GetNodeInfo:input_type -> protogen.GetNodeInfoRequest
-	27, // 20: protogen.ChordService.ClosestPrecedingFinger:input_type -> protogen.ClosestPrecedingFingerRequest
-	29, // 21: protogen.ChordService.TransferKeys:input_type -> protogen.TransferKeysRequest
-	32, // 22: protogen.ChordService.DeleteTransferredKeys:input_type -> protogen.DeleteTransferredKeysRequest
-	15, // 23: protogen.ChordService.Get:input_type -> protogen.GetRequest
-	17, // 24: protogen.ChordService.Set:input_type -> protogen.SetRequest
-	19, // 25: protogen.ChordService.Delete:input_type -> protogen.DeleteRequest
-	34, // 26: protogen.ChordService.LookupPath:input_type -> protogen.LookupPathRequest
-	36, // 27: protogen.ChordService.GetFingerTable:input_type -> protogen.GetFingerTableRequest
-	21, // 28: protogen.ChordService.SetReplica:input_type -> protogen.SetReplicaRequest
-	23, // 29: protogen.ChordService.GetReplica:input_type -> protogen.GetReplicaRequest
-	25, // 30: protogen.ChordService.DeleteReplica:input_type -> protogen.DeleteReplicaRequest
-	2,  // 31: protogen.ChordService.FindSuccessor:output_type -> protogen.FindSuccessorResponse
-	4,  // 32: protogen.ChordService.FindSuccessorWithPath:output_type -> protogen.FindSuccessorWithPathResponse
-	6,  // 33: protogen.ChordService.GetPredecessor:output_type -> protogen.GetPredecessorResponse
-	8,  // 34: protogen.ChordService.Notify:output_type -> protogen.NotifyResponse
-	10, // 35: protogen.ChordService.GetSuccessorList:output_type -> protogen.GetSuccessorListResponse
-	12, // 36: protogen.ChordService.Ping:output_type -> protogen.PingResponse
-	14, // 37: protogen.ChordService.GetNodeInfo:output_type -> protogen.GetNodeInfoResponse
-	28, // 38: protogen.ChordService.ClosestPrecedingFinger:output_type -> protogen.ClosestPrecedingFingerResponse
-	31, // 39: protogen.ChordService.TransferKeys:output_type -> protogen.TransferKeysResponse
-	33, // 40: protogen.ChordService.DeleteTransferredKeys:output_type -> protogen.DeleteTransferredKeysResponse
-	16, // 41: protogen.ChordService.Get:output_type -> protogen.GetResponse
-	18, // 42: protogen.ChordService.Set:output_type -> protogen.SetResponse
-	20, // 43: protogen.ChordService.Delete:output_type -> protogen.DeleteResponse
-	35, // 44: protogen.ChordService.LookupPath:output_type -> protogen.LookupPathResponse
-	38, // 45: protogen.ChordService.GetFingerTable:output_type -> protogen.GetFingerTableResponse
-	22, // 46: protogen.ChordService.SetReplica:output_type -> protogen.SetReplicaResponse
-	24, // 47: protogen.ChordService.GetReplica:output_type -> protogen.GetReplicaResponse
-	26, // 48: protogen.ChordService.DeleteReplica:output_type -> protogen.DeleteReplicaResponse
-	31, // [31:49] is the sub-list for method output_type
-	13, // [13:31] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	47, // 13: protogen.BulkStoreRequest.items:type_name -> protogen.BulkStoreRequest.ItemsEntry
+	0,  // 14: protogen.NotifyPredecessorLeavingRequest.new_successor:type_name -> protogen.Node
+	0,  // 15: protogen.NotifySuccessorLeavingRequest.new_predecessor:type_name -> protogen.Node
+	0,  // 16: protogen.NotifyNodeLeavingRequest.leaving_node:type_name -> protogen.Node
+	1,  // 17: protogen.ChordService.FindSuccessor:input_type -> protogen.FindSuccessorRequest
+	3,  // 18: protogen.ChordService.FindSuccessorWithPath:input_type -> protogen.FindSuccessorWithPathRequest
+	5,  // 19: protogen.ChordService.GetPredecessor:input_type -> protogen.GetPredecessorRequest
+	7,  // 20: protogen.ChordService.Notify:input_type -> protogen.NotifyRequest
+	9,  // 21: protogen.ChordService.GetSuccessorList:input_type -> protogen.GetSuccessorListRequest
+	11, // 22: protogen.ChordService.Ping:input_type -> protogen.PingRequest
+	13, // 23: protogen.ChordService.GetNodeInfo:input_type -> protogen.GetNodeInfoRequest
+	27, // 24: protogen.ChordService.ClosestPrecedingFinger:input_type -> protogen.ClosestPrecedingFingerRequest
+	29, // 25: protogen.ChordService.TransferKeys:input_type -> protogen.TransferKeysRequest
+	32, // 26: protogen.ChordService.DeleteTransferredKeys:input_type -> protogen.DeleteTransferredKeysRequest
+	15, // 27: protogen.ChordService.Get:input_type -> protogen.GetRequest
+	17, // 28: protogen.ChordService.Set:input_type -> protogen.SetRequest
+	19, // 29: protogen.ChordService.Delete:input_type -> protogen.DeleteRequest
+	34, // 30: protogen.ChordService.LookupPath:input_type -> protogen.LookupPathRequest
+	36, // 31: protogen.ChordService.GetFingerTable:input_type -> protogen.GetFingerTableRequest
+	21, // 32: protogen.ChordService.SetReplica:input_type -> protogen.SetReplicaRequest
+	23, // 33: protogen.ChordService.GetReplica:input_type -> protogen.GetReplicaRequest
+	25, // 34: protogen.ChordService.DeleteReplica:input_type -> protogen.DeleteReplicaRequest
+	39, // 35: protogen.ChordService.BulkStore:input_type -> protogen.BulkStoreRequest
+	41, // 36: protogen.ChordService.NotifyPredecessorLeaving:input_type -> protogen.NotifyPredecessorLeavingRequest
+	43, // 37: protogen.ChordService.NotifySuccessorLeaving:input_type -> protogen.NotifySuccessorLeavingRequest
+	45, // 38: protogen.ChordService.NotifyNodeLeaving:input_type -> protogen.NotifyNodeLeavingRequest
+	2,  // 39: protogen.ChordService.FindSuccessor:output_type -> protogen.FindSuccessorResponse
+	4,  // 40: protogen.ChordService.FindSuccessorWithPath:output_type -> protogen.FindSuccessorWithPathResponse
+	6,  // 41: protogen.ChordService.GetPredecessor:output_type -> protogen.GetPredecessorResponse
+	8,  // 42: protogen.ChordService.Notify:output_type -> protogen.NotifyResponse
+	10, // 43: protogen.ChordService.GetSuccessorList:output_type -> protogen.GetSuccessorListResponse
+	12, // 44: protogen.ChordService.Ping:output_type -> protogen.PingResponse
+	14, // 45: protogen.ChordService.GetNodeInfo:output_type -> protogen.GetNodeInfoResponse
+	28, // 46: protogen.ChordService.ClosestPrecedingFinger:output_type -> protogen.ClosestPrecedingFingerResponse
+	31, // 47: protogen.ChordService.TransferKeys:output_type -> protogen.TransferKeysResponse
+	33, // 48: protogen.ChordService.DeleteTransferredKeys:output_type -> protogen.DeleteTransferredKeysResponse
+	16, // 49: protogen.ChordService.Get:output_type -> protogen.GetResponse
+	18, // 50: protogen.ChordService.Set:output_type -> protogen.SetResponse
+	20, // 51: protogen.ChordService.Delete:output_type -> protogen.DeleteResponse
+	35, // 52: protogen.ChordService.LookupPath:output_type -> protogen.LookupPathResponse
+	38, // 53: protogen.ChordService.GetFingerTable:output_type -> protogen.GetFingerTableResponse
+	22, // 54: protogen.ChordService.SetReplica:output_type -> protogen.SetReplicaResponse
+	24, // 55: protogen.ChordService.GetReplica:output_type -> protogen.GetReplicaResponse
+	26, // 56: protogen.ChordService.DeleteReplica:output_type -> protogen.DeleteReplicaResponse
+	40, // 57: protogen.ChordService.BulkStore:output_type -> protogen.BulkStoreResponse
+	42, // 58: protogen.ChordService.NotifyPredecessorLeaving:output_type -> protogen.NotifyPredecessorLeavingResponse
+	44, // 59: protogen.ChordService.NotifySuccessorLeaving:output_type -> protogen.NotifySuccessorLeavingResponse
+	46, // 60: protogen.ChordService.NotifyNodeLeaving:output_type -> protogen.NotifyNodeLeavingResponse
+	39, // [39:61] is the sub-list for method output_type
+	17, // [17:39] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_chord_proto_init() }
@@ -2251,7 +2694,7 @@ func file_chord_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_chord_proto_rawDesc), len(file_chord_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   39,
+			NumMessages:   48,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

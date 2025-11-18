@@ -111,11 +111,14 @@ export default function DemoOperations({ nodes, onLookupSimulation, onOperationC
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 space-y-6">
-      <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-        <Key className="w-6 h-6" />
-        DHT Operations
-      </h2>
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-base font-semibold text-gray-200 mb-1 flex items-center gap-2">
+          <Key className="w-4 h-4 text-green-400" />
+          DHT Operations
+        </h3>
+        <p className="text-xs text-gray-500">Execute live operations on the Chord DHT</p>
+      </div>
 
       {/* Operation Selector */}
       <div className="flex gap-2">
@@ -152,27 +155,27 @@ export default function DemoOperations({ nodes, onLookupSimulation, onOperationC
       </div>
 
       {/* Input Fields */}
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div>
-          <label className="text-sm text-gray-400 mb-2 block">Key</label>
+          <label className="text-xs text-gray-400 mb-1.5 block">Key</label>
           <input
             type="text"
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="Enter key..."
-            className="w-full bg-gray-900 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-gray-800/50 border border-gray-700 text-white px-3 py-2 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
           />
         </div>
 
         {operation === 'set' && (
           <div>
-            <label className="text-sm text-gray-400 mb-2 block">Value</label>
+            <label className="text-xs text-gray-400 mb-1.5 block">Value</label>
             <input
               type="text"
               value={value}
               onChange={(e) => setValue(e.target.value)}
               placeholder="Enter value..."
-              className="w-full bg-gray-900 text-white px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-gray-800/50 border border-gray-700 text-white px-3 py-2 text-sm rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
             />
           </div>
         )}
@@ -222,9 +225,11 @@ export default function DemoOperations({ nodes, onLookupSimulation, onOperationC
       )}
 
       {/* Info */}
-      <div className="text-xs text-gray-500 border-t border-gray-700 pt-4">
-        <p className="mb-2">Connected to {nodes.length} node(s)</p>
-        <p>Operations are executed against the live Chord DHT backend.</p>
+      <div className="text-xs text-gray-500 border-t border-gray-700/50 pt-3">
+        <p className="flex items-center gap-1.5">
+          <span className="text-green-400">●</span>
+          Connected to <span className="text-gray-300 font-medium">{nodes.length}</span> node{nodes.length !== 1 ? 's' : ''}
+        </p>
       </div>
     </div>
   );
