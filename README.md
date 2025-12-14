@@ -119,6 +119,12 @@ Based on the original [Chord paper](https://pdos.csail.mit.edu/papers/chord:sigc
 
 ---
 
+## Demo Video
+
+[![Video Thumbnail](thumbnail.png)](https://drive.google.com/file/d/1hO_KhT9nIRF90Y9hE9K505tVWTQyz1JF/view?usp=sharing)
+
+---
+
 ## Backend Implementation
 
 ### Directory Structure
