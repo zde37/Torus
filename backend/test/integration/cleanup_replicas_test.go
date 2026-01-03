@@ -15,7 +15,7 @@ import (
 
 func TestCleanupStaleReplicas(t *testing.T) {
 	ctx := context.Background()
-	logger, _ := pkg.New(pkg.DefaultConfig())
+	logger, _ := pkg.NewLogger(nil)
 
 	// Create 3 nodes
 	nodes := make([]*chord.ChordNode, 3)
@@ -102,7 +102,7 @@ func TestCleanupStaleReplicas(t *testing.T) {
 
 func TestOnNodeLeaveGracefulShutdown(t *testing.T) {
 	ctx := context.Background()
-	logger, _ := pkg.New(pkg.DefaultConfig())
+	logger, _ := pkg.NewLogger(nil)
 
 	// Create 3 nodes
 	nodes := make([]*chord.ChordNode, 3)

@@ -42,7 +42,7 @@ func NewGRPCServer(node *chord.ChordNode, address string, authToken string, logg
 		node:      node,
 		address:   address,
 		authToken: authToken,
-		logger:    logger.WithFields(pkg.Fields{"component": "grpc_server"}),
+		logger:    logger,
 	}
 
 	return s, nil
@@ -58,8 +58,8 @@ func (s *GRPCServer) Start() error {
 
 	// Create gRPC server with options
 	opts := []grpc.ServerOption{
-		grpc.MaxRecvMsgSize(4 * 1024 * 1024), // 4MB
-		grpc.MaxSendMsgSize(4 * 1024 * 1024), // 4MB
+		grpc.MaxRecvMsgSize(4 * 1024 * 1024),                // 4MB
+		grpc.MaxSendMsgSize(4 * 1024 * 1024),                // 4MB
 		grpc.UnaryInterceptor(AuthInterceptor(s.authToken)), // Add auth interceptor
 	}
 
@@ -67,14 +67,16 @@ func (s *GRPCServer) Start() error {
 	pb.RegisterChordServiceServer(s.server, s)
 	reflection.Register(s.server) // self-documentation for the server
 
-	s.logger.Info().
-		Str("address", s.address).
-		Msg("Starting gRPC server")
+	s.logger.Info("Starting gRPC server", pkg.Fields{
+		"address": s.address,
+	})
 
 	// Start serving in a goroutine
 	go func() {
 		if err := s.server.Serve(listener); err != nil {
-			s.logger.Error().Err(err).Msg("gRPC server error")
+			s.logger.Error("gRPC server error", pkg.Fields{
+				"error": err.Error(),
+			})
 		}
 	}()
 
@@ -83,7 +85,7 @@ func (s *GRPCServer) Start() error {
 
 // Stop gracefully stops the gRPC server.
 func (s *GRPCServer) Stop() error {
-	s.logger.Info().Msg("Stopping gRPC server")
+	s.logger.Info("Stopping gRPC server", nil)
 
 	if s.server != nil {
 		s.server.GracefulStop()
@@ -98,7 +100,7 @@ func (s *GRPCServer) Stop() error {
 
 // FindSuccessor implements the FindSuccessor RPC.
 func (s *GRPCServer) FindSuccessor(ctx context.Context, req *pb.FindSuccessorRequest) (*pb.FindSuccessorResponse, error) {
-	s.logger.Debug().Msg("FindSuccessor called")
+	s.logger.Debug("FindSuccessor called", nil)
 
 	if len(req.Id) == 0 {
 		return nil, fmt.Errorf("id cannot be empty")
@@ -122,7 +124,7 @@ func (s *GRPCServer) FindSuccessor(ctx context.Context, req *pb.FindSuccessorReq
 // FindSuccessorWithPath implements the FindSuccessorWithPath RPC.
 // This is used for recursive path tracking between nodes.
 func (s *GRPCServer) FindSuccessorWithPath(ctx context.Context, req *pb.FindSuccessorWithPathRequest) (*pb.FindSuccessorWithPathResponse, error) {
-	s.logger.Debug().Msg("FindSuccessorWithPath called")
+	s.logger.Debug("FindSuccessorWithPath called", nil)
 
 	if len(req.Id) == 0 {
 		return nil, fmt.Errorf("id cannot be empty")
@@ -151,7 +153,7 @@ func (s *GRPCServer) FindSuccessorWithPath(ctx context.Context, req *pb.FindSucc
 
 // GetPredecessor implements the GetPredecessor RPC.
 func (s *GRPCServer) GetPredecessor(ctx context.Context, req *pb.GetPredecessorRequest) (*pb.GetPredecessorResponse, error) {
-	s.logger.Debug().Msg("GetPredecessor called")
+	s.logger.Debug("GetPredecessor called", nil)
 
 	predecessor := s.node.GetPredecessor()
 
@@ -162,7 +164,7 @@ func (s *GRPCServer) GetPredecessor(ctx context.Context, req *pb.GetPredecessorR
 
 // Notify implements the Notify RPC.
 func (s *GRPCServer) Notify(ctx context.Context, req *pb.NotifyRequest) (*pb.NotifyResponse, error) {
-	s.logger.Debug().Msg("Notify called")
+	s.logger.Debug("Notify called", nil)
 
 	if req.Node == nil {
 		return nil, fmt.Errorf("node cannot be nil")
@@ -179,7 +181,7 @@ func (s *GRPCServer) Notify(ctx context.Context, req *pb.NotifyRequest) (*pb.Not
 
 // GetSuccessorList implements the GetSuccessorList RPC.
 func (s *GRPCServer) GetSuccessorList(ctx context.Context, req *pb.GetSuccessorListRequest) (*pb.GetSuccessorListResponse, error) {
-	s.logger.Debug().Msg("GetSuccessorList called")
+	s.logger.Debug("GetSuccessorList called", nil)
 
 	successors := s.node.GetSuccessorList()
 
@@ -199,7 +201,9 @@ func (s *GRPCServer) GetSuccessorList(ctx context.Context, req *pb.GetSuccessorL
 
 // Ping implements the Ping RPC.
 func (s *GRPCServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingResponse, error) {
-	s.logger.Debug().Str("message", req.Message).Msg("Ping called")
+	s.logger.Debug("Ping called", pkg.Fields{
+		"message": req.Message,
+	})
 
 	return &pb.PingResponse{
 		Message:   "pong",
@@ -209,21 +213,25 @@ func (s *GRPCServer) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRes
 
 // GetNodeInfo implements the GetNodeInfo RPC.
 func (s *GRPCServer) GetNodeInfo(ctx context.Context, req *pb.GetNodeInfoRequest) (*pb.GetNodeInfoResponse, error) {
-	s.logger.Debug().Msg("GetNodeInfo called")
+	s.logger.Debug("GetNodeInfo called", nil)
 
 	nodeAddr := s.node.Address()
 
 	// Get key count (user keys only, excluding Chord metadata)
 	keyCount, err := s.node.GetKeyCount(ctx)
 	if err != nil {
-		s.logger.Warn().Err(err).Msg("Failed to get key count")
+		s.logger.Warn("Failed to get key count", pkg.Fields{
+			"error": err.Error(),
+		})
 		keyCount = 0 // Default to 0 on error
 	}
 
 	// Get replica count
 	replicaCount, err := s.node.GetReplicaCount(ctx)
 	if err != nil {
-		s.logger.Warn().Err(err).Msg("Failed to get replica count")
+		s.logger.Warn("Failed to get replica count", pkg.Fields{
+			"error": err.Error(),
+		})
 		replicaCount = 0 // Default to 0 on error
 	}
 
@@ -238,7 +246,7 @@ func (s *GRPCServer) GetNodeInfo(ctx context.Context, req *pb.GetNodeInfoRequest
 
 // ClosestPrecedingFinger implements the ClosestPrecedingFinger RPC.
 func (s *GRPCServer) ClosestPrecedingFinger(ctx context.Context, req *pb.ClosestPrecedingFingerRequest) (*pb.ClosestPrecedingFingerResponse, error) {
-	s.logger.Debug().Msg("ClosestPrecedingFinger called")
+	s.logger.Debug("ClosestPrecedingFinger called", nil)
 
 	if len(req.Id) == 0 {
 		return nil, fmt.Errorf("id cannot be empty")
@@ -257,7 +265,7 @@ func (s *GRPCServer) ClosestPrecedingFinger(ctx context.Context, req *pb.Closest
 
 // TransferKeys implements the TransferKeys RPC.
 func (s *GRPCServer) TransferKeys(ctx context.Context, req *pb.TransferKeysRequest) (*pb.TransferKeysResponse, error) {
-	s.logger.Debug().Msg("TransferKeys called")
+	s.logger.Debug("TransferKeys called", nil)
 
 	if len(req.StartId) == 0 {
 		return nil, fmt.Errorf("start_id cannot be empty")
@@ -285,9 +293,9 @@ func (s *GRPCServer) TransferKeys(ctx context.Context, req *pb.TransferKeysReque
 		})
 	}
 
-	s.logger.Info().
-		Int("key_count", len(pbKeys)).
-		Msg("Transferred keys")
+	s.logger.Info("Transferred keys", pkg.Fields{
+		"key_count": len(pbKeys),
+	})
 
 	return &pb.TransferKeysResponse{
 		Keys:  pbKeys,
@@ -297,7 +305,7 @@ func (s *GRPCServer) TransferKeys(ctx context.Context, req *pb.TransferKeysReque
 
 // DeleteTransferredKeys implements the DeleteTransferredKeys RPC.
 func (s *GRPCServer) DeleteTransferredKeys(ctx context.Context, req *pb.DeleteTransferredKeysRequest) (*pb.DeleteTransferredKeysResponse, error) {
-	s.logger.Debug().Msg("DeleteTransferredKeys called")
+	s.logger.Debug("DeleteTransferredKeys called", nil)
 
 	if len(req.StartId) == 0 {
 		return nil, fmt.Errorf("start_id cannot be empty")
@@ -316,11 +324,11 @@ func (s *GRPCServer) DeleteTransferredKeys(ctx context.Context, req *pb.DeleteTr
 		return nil, fmt.Errorf("failed to delete transferred keys: %w", err)
 	}
 
-	s.logger.Info().
-		Int("key_count", count).
-		Str("start_id", startID.Text(16)[:8]).
-		Str("end_id", endID.Text(16)[:8]).
-		Msg("Deleted transferred keys")
+	s.logger.Info("Deleted transferred keys", pkg.Fields{
+		"key_count": count,
+		"start_id":  startID.Text(16)[:8],
+		"end_id":    endID.Text(16)[:8],
+	})
 
 	return &pb.DeleteTransferredKeysResponse{
 		Success: true,
@@ -330,7 +338,9 @@ func (s *GRPCServer) DeleteTransferredKeys(ctx context.Context, req *pb.DeleteTr
 
 // Get implements the Get RPC for DHT operations.
 func (s *GRPCServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
-	s.logger.Debug().Str("key", req.Key).Msg("Get called")
+	s.logger.Debug("Get called", pkg.Fields{
+		"key": req.Key,
+	})
 
 	if req.Key == "" {
 		return nil, fmt.Errorf("key cannot be empty")
@@ -350,7 +360,9 @@ func (s *GRPCServer) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetRespon
 
 // Set implements the Set RPC for DHT operations.
 func (s *GRPCServer) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
-	s.logger.Debug().Str("key", req.Key).Msg("Set called")
+	s.logger.Debug("Set called", pkg.Fields{
+		"key": req.Key,
+	})
 
 	if req.Key == "" {
 		return nil, fmt.Errorf("key cannot be empty")
@@ -368,7 +380,9 @@ func (s *GRPCServer) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetRespon
 
 // Delete implements the Delete RPC for DHT operations.
 func (s *GRPCServer) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
-	s.logger.Debug().Str("key", req.Key).Msg("Delete called")
+	s.logger.Debug("Delete called", pkg.Fields{
+		"key": req.Key,
+	})
 
 	if req.Key == "" {
 		return nil, fmt.Errorf("key cannot be empty")
@@ -386,7 +400,9 @@ func (s *GRPCServer) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.Del
 
 // LookupPath implements the LookupPath RPC.
 func (s *GRPCServer) LookupPath(ctx context.Context, req *pb.LookupPathRequest) (*pb.LookupPathResponse, error) {
-	s.logger.Debug().Str("key", req.Key).Msg("LookupPath called")
+	s.logger.Debug("LookupPath called", pkg.Fields{
+		"key": req.Key,
+	})
 
 	if req.Key == "" {
 		return nil, fmt.Errorf("key cannot be empty")
@@ -418,7 +434,7 @@ func (s *GRPCServer) LookupPath(ctx context.Context, req *pb.LookupPathRequest) 
 
 // GetFingerTable implements the GetFingerTable RPC.
 func (s *GRPCServer) GetFingerTable(ctx context.Context, req *pb.GetFingerTableRequest) (*pb.GetFingerTableResponse, error) {
-	s.logger.Debug().Msg("GetFingerTable called")
+	s.logger.Debug("GetFingerTable called", nil)
 
 	fingerTable := s.node.GetFingerTable()
 
@@ -445,7 +461,9 @@ func (s *GRPCServer) GetFingerTable(ctx context.Context, req *pb.GetFingerTableR
 
 // SetReplica implements the SetReplica RPC for replication.
 func (s *GRPCServer) SetReplica(ctx context.Context, req *pb.SetReplicaRequest) (*pb.SetReplicaResponse, error) {
-	s.logger.Debug().Str("key", req.Key).Msg("SetReplica called")
+	s.logger.Debug("SetReplica called", pkg.Fields{
+		"key": req.Key,
+	})
 
 	if req.Key == "" {
 		return nil, fmt.Errorf("key cannot be empty")
@@ -463,7 +481,9 @@ func (s *GRPCServer) SetReplica(ctx context.Context, req *pb.SetReplicaRequest) 
 
 // GetReplica implements the GetReplica RPC for retrieving replicas.
 func (s *GRPCServer) GetReplica(ctx context.Context, req *pb.GetReplicaRequest) (*pb.GetReplicaResponse, error) {
-	s.logger.Debug().Str("key", req.Key).Msg("GetReplica called")
+	s.logger.Debug("GetReplica called", pkg.Fields{
+		"key": req.Key,
+	})
 
 	if req.Key == "" {
 		return nil, fmt.Errorf("key cannot be empty")
@@ -483,7 +503,9 @@ func (s *GRPCServer) GetReplica(ctx context.Context, req *pb.GetReplicaRequest) 
 
 // DeleteReplica implements the DeleteReplica RPC for deleting replicas.
 func (s *GRPCServer) DeleteReplica(ctx context.Context, req *pb.DeleteReplicaRequest) (*pb.DeleteReplicaResponse, error) {
-	s.logger.Debug().Str("key", req.Key).Msg("DeleteReplica called")
+	s.logger.Debug("DeleteReplica called", pkg.Fields{
+		"key": req.Key,
+	})
 
 	if req.Key == "" {
 		return nil, fmt.Errorf("key cannot be empty")
@@ -501,7 +523,9 @@ func (s *GRPCServer) DeleteReplica(ctx context.Context, req *pb.DeleteReplicaReq
 
 // BulkStore stores multiple key-value pairs efficiently.
 func (s *GRPCServer) BulkStore(ctx context.Context, req *pb.BulkStoreRequest) (*pb.BulkStoreResponse, error) {
-	s.logger.Debug().Int("item_count", len(req.Items)).Msg("BulkStore called")
+	s.logger.Debug("BulkStore called", pkg.Fields{
+		"item_count": len(req.Items),
+	})
 
 	if len(req.Items) == 0 {
 		return &pb.BulkStoreResponse{
@@ -515,7 +539,10 @@ func (s *GRPCServer) BulkStore(ctx context.Context, req *pb.BulkStoreRequest) (*
 	for key, value := range req.Items {
 		// Store with the raw key (it's already hashed from the sender)
 		if err := s.node.SetRaw(ctx, key, value); err != nil {
-			s.logger.Error().Err(err).Str("key", key).Msg("Failed to store item in bulk operation")
+			s.logger.Error("Failed to store item in bulk operation", pkg.Fields{
+				"error": err.Error(),
+				"key":   key,
+			})
 			// Continue with other items even if one fails
 		} else {
 			stored++
@@ -531,7 +558,7 @@ func (s *GRPCServer) BulkStore(ctx context.Context, req *pb.BulkStoreRequest) (*
 
 // NotifyPredecessorLeaving handles notification that our successor is leaving.
 func (s *GRPCServer) NotifyPredecessorLeaving(ctx context.Context, req *pb.NotifyPredecessorLeavingRequest) (*pb.NotifyPredecessorLeavingResponse, error) {
-	s.logger.Debug().Msg("NotifyPredecessorLeaving called")
+	s.logger.Debug("NotifyPredecessorLeaving called", nil)
 
 	if req.NewSuccessor == nil {
 		return nil, fmt.Errorf("new successor cannot be nil")
@@ -546,9 +573,9 @@ func (s *GRPCServer) NotifyPredecessorLeaving(ctx context.Context, req *pb.Notif
 	// Update our successor to the leaving node's successor
 	s.node.SetSuccessor(newSuccessor)
 
-	s.logger.Info().
-		Str("new_successor", newSuccessor.Address()).
-		Msg("Updated successor due to predecessor leaving")
+	s.logger.Info("Updated successor due to predecessor leaving", pkg.Fields{
+		"new_successor": newSuccessor.Address(),
+	})
 
 	return &pb.NotifyPredecessorLeavingResponse{
 		Success: true,
@@ -557,7 +584,7 @@ func (s *GRPCServer) NotifyPredecessorLeaving(ctx context.Context, req *pb.Notif
 
 // NotifySuccessorLeaving handles notification that our predecessor is leaving.
 func (s *GRPCServer) NotifySuccessorLeaving(ctx context.Context, req *pb.NotifySuccessorLeavingRequest) (*pb.NotifySuccessorLeavingResponse, error) {
-	s.logger.Debug().Msg("NotifySuccessorLeaving called")
+	s.logger.Debug("NotifySuccessorLeaving called", nil)
 
 	if req.NewPredecessor == nil {
 		return nil, fmt.Errorf("new predecessor cannot be nil")
@@ -572,9 +599,9 @@ func (s *GRPCServer) NotifySuccessorLeaving(ctx context.Context, req *pb.NotifyS
 	// Update our predecessor to the leaving node's predecessor
 	s.node.SetPredecessor(newPredecessor)
 
-	s.logger.Info().
-		Str("new_predecessor", newPredecessor.Address()).
-		Msg("Updated predecessor due to successor leaving")
+	s.logger.Info("Updated predecessor due to successor leaving", pkg.Fields{
+		"new_predecessor": newPredecessor.Address(),
+	})
 
 	return &pb.NotifySuccessorLeavingResponse{
 		Success: true,
@@ -583,7 +610,7 @@ func (s *GRPCServer) NotifySuccessorLeaving(ctx context.Context, req *pb.NotifyS
 
 // NotifyNodeLeaving handles notification that a node in the ring is leaving.
 func (s *GRPCServer) NotifyNodeLeaving(ctx context.Context, req *pb.NotifyNodeLeavingRequest) (*pb.NotifyNodeLeavingResponse, error) {
-	s.logger.Debug().Msg("NotifyNodeLeaving called")
+	s.logger.Debug("NotifyNodeLeaving called", nil)
 
 	if req.LeavingNode == nil {
 		return nil, fmt.Errorf("leaving node cannot be nil")
@@ -598,9 +625,9 @@ func (s *GRPCServer) NotifyNodeLeaving(ctx context.Context, req *pb.NotifyNodeLe
 	// Remove the leaving node from our successor list if present
 	s.node.RemoveFromSuccessorList(leavingNode)
 
-	s.logger.Info().
-		Str("leaving_node", leavingNode.Address()).
-		Msg("Processed node leaving notification")
+	s.logger.Info("Processed node leaving notification", pkg.Fields{
+		"leaving_node": leavingNode.Address(),
+	})
 
 	return &pb.NotifyNodeLeavingResponse{
 		Success: true,

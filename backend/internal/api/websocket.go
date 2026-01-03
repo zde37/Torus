@@ -77,7 +77,7 @@ func NewWebSocketHub(logger *pkg.Logger) *WebSocketHub {
 		register:   make(chan *client),
 		unregister: make(chan *client),
 		shutdown:   make(chan struct{}),
-		logger:     logger.WithFields(pkg.Fields{"component": "websocket"}),
+		logger:     logger,
 	}
 }
 
@@ -92,9 +92,9 @@ func (h *WebSocketHub) Run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
-			h.logger.Info().
-				Int("total_clients", len(h.clients)).
-				Msg("Client connected")
+			h.logger.Info("client connected", pkg.Fields{
+				"total_clients": len(h.clients),
+			})
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -102,9 +102,9 @@ func (h *WebSocketHub) Run() {
 				delete(h.clients, client)
 				close(client.send)
 				h.mu.Unlock()
-				h.logger.Info().
-					Int("total_clients", len(h.clients)).
-					Msg("Client disconnected")
+				h.logger.Info("client disconnected", pkg.Fields{
+					"total_clients": len(h.clients),
+				})
 			} else {
 				h.mu.Unlock()
 			}
@@ -119,7 +119,7 @@ func (h *WebSocketHub) Run() {
 					// Client's send buffer is full (slow client)
 					// Close and unregister the client
 					h.mu.RUnlock()
-					h.logger.Warn().Msg("Client send buffer full, disconnecting slow client")
+					h.logger.Warn("client send buffer full, disconnecting slow client", nil)
 					go func(cl *client) {
 						h.unregister <- cl
 					}(c)
@@ -129,7 +129,7 @@ func (h *WebSocketHub) Run() {
 			h.mu.RUnlock()
 
 		case <-h.shutdown:
-			h.logger.Info().Msg("Shutting down WebSocket hub")
+			h.logger.Info("shutting down WebSocket hub", nil)
 			// Close all client connections
 			h.mu.Lock()
 			for c := range h.clients {
@@ -138,7 +138,7 @@ func (h *WebSocketHub) Run() {
 				delete(h.clients, c)
 			}
 			h.mu.Unlock()
-			h.logger.Info().Msg("WebSocket hub shutdown complete")
+			h.logger.Info("webSocket hub shutdown complete", nil)
 			return
 		}
 	}
@@ -170,11 +170,11 @@ func (c *client) readPump() {
 		_, _, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				c.hub.logger.Error().Err(err).Msg("WebSocket unexpected close error")
+				c.hub.logger.Error("webSocket unexpected close error", pkg.Fields{"error": err.Error()})
 			}
 			break
 		}
-		// Future: Handle incoming messages here
+		// TODO: Handle incoming messages here
 	}
 }
 
@@ -229,7 +229,7 @@ func (c *client) writePump() {
 func (h *WebSocketHub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to upgrade to websocket")
+		h.logger.Error("failed to upgrade to websocket", pkg.Fields{"error": err.Error()})
 		return
 	}
 
@@ -259,7 +259,7 @@ func (h *WebSocketHub) BroadcastRingUpdate(update interface{}) error {
 	case h.broadcast <- data:
 		// Message queued successfully
 	default:
-		h.logger.Warn().Msg("Broadcast channel full, dropping message")
+		h.logger.Warn("broadcast channel full, dropping message", nil)
 	}
 
 	return nil

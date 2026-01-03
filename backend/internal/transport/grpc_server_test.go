@@ -33,7 +33,7 @@ func createTestNode(t *testing.T, port int) *chord.ChordNode {
 		FixFingersInterval: 100 * time.Millisecond,
 	}
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	node, err := chord.NewChordNode(cfg, logger)
@@ -58,14 +58,14 @@ func TestNewGRPCServer(t *testing.T) {
 			name:        "valid server creation",
 			node:        createTestNode(t, 8001),
 			address:     "127.0.0.1:9001",
-			logger:      func() *pkg.Logger { l, _ := pkg.New(pkg.DefaultConfig()); return l }(),
+			logger:      func() *pkg.Logger { l, _ := pkg.NewLogger(nil); return l }(),
 			expectError: false,
 		},
 		{
 			name:        "nil node",
 			node:        nil,
 			address:     "127.0.0.1:9002",
-			logger:      func() *pkg.Logger { l, _ := pkg.New(pkg.DefaultConfig()); return l }(),
+			logger:      func() *pkg.Logger { l, _ := pkg.NewLogger(nil); return l }(),
 			expectError: true,
 		},
 		{
@@ -103,7 +103,7 @@ func TestGRPCServer_StartStop(t *testing.T) {
 	node := createTestNode(t, 8010)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9010", TEST_AUTH_TOKEN, logger)
@@ -127,7 +127,7 @@ func TestGRPCServer_FindSuccessor(t *testing.T) {
 	node := createTestNode(t, 8020)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9020",TEST_AUTH_TOKEN, logger)
@@ -177,7 +177,7 @@ func TestGRPCServer_GetPredecessor(t *testing.T) {
 	node := createTestNode(t, 8030)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9030", TEST_AUTH_TOKEN, logger)
@@ -207,7 +207,7 @@ func TestGRPCServer_Notify(t *testing.T) {
 	node := createTestNode(t, 8040)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9040", TEST_AUTH_TOKEN, logger)
@@ -260,7 +260,7 @@ func TestGRPCServer_GetSuccessorList(t *testing.T) {
 	node := createTestNode(t, 8050)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9050", TEST_AUTH_TOKEN, logger)
@@ -282,7 +282,7 @@ func TestGRPCServer_Ping(t *testing.T) {
 	node := createTestNode(t, 8060)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9060", TEST_AUTH_TOKEN, logger)
@@ -319,7 +319,7 @@ func TestGRPCServer_ClosestPrecedingFinger(t *testing.T) {
 	node := createTestNode(t, 8070)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9070", TEST_AUTH_TOKEN, logger)
@@ -368,7 +368,7 @@ func TestGRPCServer_TransferKeys(t *testing.T) {
 	node := createTestNode(t, 8080)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9080", TEST_AUTH_TOKEN, logger)
@@ -399,7 +399,7 @@ func TestGRPCServer_Get(t *testing.T) {
 	node := createTestNode(t, 8090)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9090", TEST_AUTH_TOKEN, logger)
@@ -419,7 +419,7 @@ func TestGRPCServer_Set(t *testing.T) {
 	node := createTestNode(t, 8100)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9100",TEST_AUTH_TOKEN, logger)
@@ -441,7 +441,7 @@ func TestGRPCServer_Delete(t *testing.T) {
 	node := createTestNode(t, 8110)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9110",TEST_AUTH_TOKEN, logger)

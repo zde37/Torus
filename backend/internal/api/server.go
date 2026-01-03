@@ -44,7 +44,7 @@ func NewServer(cfg *Config, logger *pkg.Logger) (*Server, error) {
 	wsHub := NewWebSocketHub(logger)
 
 	return &Server{
-		logger:    logger.WithFields(pkg.Fields{"component": "http_api"}),
+		logger:    logger,
 		grpcAddr:  cfg.GRPCAddr,
 		authToken: cfg.AuthToken,
 		wsHub:     wsHub,
@@ -106,19 +106,19 @@ func (s *Server) Start(port int) error {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	s.logger.Info().
-		Int("port", port).
-		Str("grpc_addr", s.grpcAddr).
-		Msg("Starting HTTP API server")
+	s.logger.Info("starting HTTP API server", pkg.Fields{
+		"port":      port,
+		"grpc_addr": s.grpcAddr,
+	})
 
 	// Start server in goroutine
 	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			s.logger.Error().Err(err).Msg("HTTP server error")
+			s.logger.Error("HTTP server error", pkg.Fields{"error": err.Error()})
 		}
 	}()
 
-	s.logger.Info().Int("port", port).Msg("HTTP API server started")
+	s.logger.Info("HTTP API server started", pkg.Fields{"port": port})
 	return nil
 }
 
@@ -129,7 +129,7 @@ func (s *Server) GetWebSocketHub() *WebSocketHub {
 
 // Stop gracefully stops the HTTP server.
 func (s *Server) Stop() error {
-	s.logger.Info().Msg("Stopping HTTP API server")
+	s.logger.Info("stopping HTTP API server", nil)
 
 	// Cancel the grpc-gateway context first
 	if s.cancel != nil {
@@ -151,7 +151,7 @@ func (s *Server) Stop() error {
 		}
 	}
 
-	s.logger.Info().Msg("HTTP API server stopped")
+	s.logger.Info("HTTP API server stopped", nil)
 	return nil
 }
 

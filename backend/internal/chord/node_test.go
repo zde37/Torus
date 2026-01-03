@@ -20,7 +20,7 @@ func createTestNode(t *testing.T, host string, port int) *ChordNode {
 	cfg.StabilizeInterval = 100 * time.Millisecond
 	cfg.FixFingersInterval = 100 * time.Millisecond
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(pkg.DefaultConfig())
 	require.NoError(t, err)
 
 	node, err := NewChordNode(cfg, logger)
@@ -43,7 +43,7 @@ func TestNewChordNode(t *testing.T) {
 	})
 
 	t.Run("nil config", func(t *testing.T) {
-		logger, err := pkg.New(pkg.DefaultConfig())
+		logger, err := pkg.NewLogger(pkg.DefaultConfig())
 		require.NoError(t, err)
 
 		node, err := NewChordNode(nil, logger)
@@ -64,7 +64,7 @@ func TestNewChordNode(t *testing.T) {
 		cfg := config.DefaultConfig()
 		cfg.Port = -1 // Invalid port
 
-		logger, err := pkg.New(pkg.DefaultConfig())
+		logger, err := pkg.NewLogger(pkg.DefaultConfig())
 		require.NoError(t, err)
 
 		node, err := NewChordNode(cfg, logger)
@@ -944,7 +944,7 @@ func BenchmarkChordNode_FindSuccessor(b *testing.B) {
 	cfg.Host = "127.0.0.1"
 	cfg.Port = 8080
 
-	logger, _ := pkg.New(pkg.DefaultConfig())
+	logger, _ := pkg.NewLogger(pkg.DefaultConfig())
 	node, _ := NewChordNode(cfg, logger)
 	defer node.Shutdown()
 
@@ -963,7 +963,7 @@ func BenchmarkChordNode_ClosestPrecedingNode(b *testing.B) {
 	cfg.Host = "127.0.0.1"
 	cfg.Port = 8080
 
-	logger, _ := pkg.New(pkg.DefaultConfig())
+	logger, _ := pkg.NewLogger(pkg.DefaultConfig())
 	node, _ := NewChordNode(cfg, logger)
 	defer node.Shutdown()
 

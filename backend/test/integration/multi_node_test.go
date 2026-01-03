@@ -28,7 +28,7 @@ type testCluster struct {
 func newTestCluster(t *testing.T) *testCluster {
 	t.Helper()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	return &testCluster{

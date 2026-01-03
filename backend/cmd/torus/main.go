@@ -61,23 +61,26 @@ func main() {
 	loggerConfig := pkg.DefaultConfig()
 	loggerConfig.Level = *logLevel
 	loggerConfig.Format = *logFormat
+	loggerConfig.Outputs = []string{pkg.LogOutputStdout, pkg.LogOutputFile}
 
-	logger, err := pkg.New(loggerConfig)
+	logger, err := pkg.NewLogger(loggerConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create logger: %v\n", err)
 		os.Exit(1)
 	}
 
-	logger.Info().
-		Str("host", cfg.Host).
-		Int("port", cfg.Port).
-		Int("http_port", cfg.HTTPPort).
-		Msg("Starting Torus node")
+	logger.Info("Starting Torus node", pkg.Fields{
+		"host":      cfg.Host,
+		"port":      cfg.Port,
+		"http_port": cfg.HTTPPort,
+	})
 
 	// Create ChordNode
 	node, err := chord.NewChordNode(cfg, logger)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to create Chord node")
+		logger.Error("Failed to create Chord node", pkg.Fields{
+			"error": err.Error(),
+		})
 		os.Exit(1)
 	}
 
@@ -85,19 +88,23 @@ func main() {
 	serverAddr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	grpcServer, err := transport.NewGRPCServer(node, serverAddr, cfg.AuthToken, logger)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to create gRPC server")
+		logger.Error("Failed to create gRPC server", pkg.Fields{
+			"error": err.Error(),
+		})
 		os.Exit(1)
 	}
 
 	// Start gRPC server
 	if err := grpcServer.Start(); err != nil {
-		logger.Error().Err(err).Msg("Failed to start gRPC server")
+		logger.Error("Failed to start gRPC server", pkg.Fields{
+			"error": err.Error(),
+		})
 		os.Exit(1)
 	}
 
-	logger.Info().
-		Str("address", serverAddr).
-		Msg("gRPC server started")
+	logger.Info("gRPC server started", pkg.Fields{
+		"address": serverAddr,
+	})
 
 	// Create and set gRPC client for inter-node communication
 	grpcClient := transport.NewGRPCClient(logger, cfg.AuthToken, cfg.RPCTimeout)
@@ -110,21 +117,25 @@ func main() {
 		AuthToken: cfg.AuthToken,
 	}, logger)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to create HTTP API server")
+		logger.Error("Failed to create HTTP API server", pkg.Fields{
+			"error": err.Error(),
+		})
 		cleanup(node, grpcServer, grpcClient, nil, logger)
 		os.Exit(1)
 	}
 
 	// Start HTTP API server
 	if err := httpServer.Start(cfg.HTTPPort); err != nil {
-		logger.Error().Err(err).Msg("Failed to start HTTP API server")
+		logger.Error("Failed to start HTTP API server", pkg.Fields{
+			"error": err.Error(),
+		})
 		cleanup(node, grpcServer, grpcClient, nil, logger)
 		os.Exit(1)
 	}
 
-	logger.Info().
-		Int("port", cfg.HTTPPort).
-		Msg("HTTP API server started")
+	logger.Info("HTTP API server started", pkg.Fields{
+		"port": cfg.HTTPPort,
+	})
 
 	// Set the WebSocket broadcaster for ring updates
 	node.SetBroadcaster(httpServer.GetWebSocketHub())
@@ -132,112 +143,122 @@ func main() {
 	// Create or join Chord ring
 	if *create {
 		// Explicitly creating new ring
-		logger.Info().Msg("Creating new Chord ring (--create flag set)")
+		logger.Info("Creating new Chord ring (--create flag set)", nil)
 		if err := node.Create(); err != nil {
-			logger.Error().Err(err).Msg("Failed to create Chord ring")
+			logger.Error("Failed to create Chord ring", pkg.Fields{
+				"error": err.Error(),
+			})
 			cleanup(node, grpcServer, grpcClient, httpServer, logger)
 			os.Exit(1)
 		}
-		logger.Info().
-			Str("node_id", node.ID().Text(16)[:16]).
-			Msg("Chord ring created successfully")
+		logger.Info("Chord ring created successfully", pkg.Fields{
+			"node_id": node.ID().Text(16)[:16],
+		})
 	} else {
 		// Try each bootstrap node until one succeeds
-		logger.Info().
-			Int("bootstrap_count", len(cfg.BootstrapNodes)).
-			Msg("Attempting to join existing Chord ring")
+		logger.Info("Attempting to join existing Chord ring", pkg.Fields{
+			"bootstrap_count": len(cfg.BootstrapNodes),
+		})
 
 		var joinErr error
 		joined := false
 
 		for _, bootstrapAddr := range cfg.BootstrapNodes {
-			logger.Debug().
-				Str("bootstrap", bootstrapAddr).
-				Msg("Trying bootstrap node")
+			logger.Debug("Trying bootstrap node", pkg.Fields{
+				"bootstrap": bootstrapAddr,
+			})
 
 			// Get bootstrap node information via RPC
 			bootstrapNode, err := grpcClient.GetNodeInfo(bootstrapAddr)
 			if err != nil {
-				logger.Warn().
-					Err(err).
-					Str("bootstrap", bootstrapAddr).
-					Msg("Failed to contact bootstrap node, trying next")
+				logger.Warn("Failed to contact bootstrap node, trying next", pkg.Fields{
+					"error":     err.Error(),
+					"bootstrap": bootstrapAddr,
+				})
 				joinErr = err
 				continue
 			}
 
-			logger.Info().
-				Str("bootstrap_id", bootstrapNode.ID.Text(16)[:16]).
-				Str("bootstrap_addr", bootstrapNode.Address()).
-				Msg("Retrieved bootstrap node information")
+			logger.Info("Retrieved bootstrap node information", pkg.Fields{
+				"bootstrap_id":   bootstrapNode.ID.Text(16)[:16],
+				"bootstrap_addr": bootstrapNode.Address(),
+			})
 
 			// Join the ring
 			if err := node.Join(bootstrapNode); err != nil {
-				logger.Warn().
-					Err(err).
-					Str("bootstrap", bootstrapAddr).
-					Msg("Failed to join via this bootstrap node, trying next")
+				logger.Warn("Failed to join via this bootstrap node, trying next", pkg.Fields{
+					"error":     err.Error(),
+					"bootstrap": bootstrapAddr,
+				})
 				joinErr = err
 				continue
 			}
 
-			logger.Info().
-				Str("node_id", node.ID().Text(16)[:16]).
-				Str("bootstrap", bootstrapAddr).
-				Msg("Successfully joined Chord ring")
+			logger.Info("Successfully joined Chord ring", pkg.Fields{
+				"node_id":   node.ID().Text(16)[:16],
+				"bootstrap": bootstrapAddr,
+			})
 			joined = true
 			break
 		}
 
 		if !joined {
-			logger.Error().
-				Err(joinErr).
-				Msg("Failed to join ring via any bootstrap node")
+			logger.Error("Failed to join ring via any bootstrap node", pkg.Fields{
+				"error": joinErr.Error(),
+			})
 			cleanup(node, grpcServer, grpcClient, httpServer, logger)
 			os.Exit(1)
 		}
 	}
 
-	logger.Info().Msg("Torus node is ready")
+	logger.Info("Torus node is ready", nil)
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	sig := <-sigChan
-	logger.Info().
-		Str("signal", sig.String()).
-		Msg("Received shutdown signal")
+	logger.Info("Received shutdown signal", pkg.Fields{
+		"signal": sig.String(),
+	})
 
 	// Cleanup
 	cleanup(node, grpcServer, grpcClient, httpServer, logger)
 
-	logger.Info().Msg("Torus node shutdown complete")
+	logger.Info("Torus node shutdown complete", nil)
 }
 
 // cleanup performs graceful shutdown of all components
 func cleanup(node *chord.ChordNode, grpcServer *transport.GRPCServer, grpcClient *transport.GRPCClient, httpServer *api.Server, logger *pkg.Logger) {
-	logger.Info().Msg("Starting graceful shutdown")
+	logger.Info("Starting graceful shutdown", nil)
 
 	// Stop HTTP server
 	if httpServer != nil {
 		if err := httpServer.Stop(); err != nil {
-			logger.Error().Err(err).Msg("Error stopping HTTP server")
+			logger.Error("Error stopping HTTP server", pkg.Fields{
+				"error": err.Error(),
+			})
 		}
 	}
 
 	// Stop gRPC server
 	if err := grpcServer.Stop(); err != nil {
-		logger.Error().Err(err).Msg("Error stopping gRPC server")
+		logger.Error("Error stopping gRPC server", pkg.Fields{
+			"error": err.Error(),
+		})
 	}
 
 	// Shutdown ChordNode
 	if err := node.Shutdown(); err != nil {
-		logger.Error().Err(err).Msg("Error shutting down Chord node")
+		logger.Error("Error shutting down Chord node", pkg.Fields{
+			"error": err.Error(),
+		})
 	}
 
 	// Close gRPC client connections
 	if err := grpcClient.Close(); err != nil {
-		logger.Error().Err(err).Msg("Error closing gRPC client")
+		logger.Error("Error closing gRPC client", pkg.Fields{
+			"error": err.Error(),
+		})
 	}
 }

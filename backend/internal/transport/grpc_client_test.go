@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewGRPCClient(t *testing.T) {
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 5*time.Second)
@@ -38,7 +38,7 @@ func TestGRPCClient_FindSuccessor(t *testing.T) {
 	node := createTestNode(t, 8200)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9200", TEST_AUTH_TOKEN, logger)
@@ -66,7 +66,7 @@ func TestGRPCClient_FindSuccessor(t *testing.T) {
 }
 
 func TestGRPCClient_FindSuccessor_InvalidAddress(t *testing.T) {
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	client := NewGRPCClient(logger, TEST_AUTH_TOKEN, 1*time.Second)
@@ -84,7 +84,7 @@ func TestGRPCClient_GetPredecessor(t *testing.T) {
 	node := createTestNode(t, 8210)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9210", TEST_AUTH_TOKEN, logger)
@@ -121,7 +121,7 @@ func TestGRPCClient_Notify(t *testing.T) {
 	node := createTestNode(t, 8220)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9220", TEST_AUTH_TOKEN, logger)
@@ -154,7 +154,7 @@ func TestGRPCClient_GetSuccessorList(t *testing.T) {
 	node := createTestNode(t, 8230)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9230", TEST_AUTH_TOKEN, logger)
@@ -184,7 +184,7 @@ func TestGRPCClient_Ping(t *testing.T) {
 	node := createTestNode(t, 8240)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9240", TEST_AUTH_TOKEN, logger)
@@ -212,7 +212,7 @@ func TestGRPCClient_ClosestPrecedingFinger(t *testing.T) {
 	node := createTestNode(t, 8250)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9250", TEST_AUTH_TOKEN, logger)
@@ -243,7 +243,7 @@ func TestGRPCClient_ConnectionPooling(t *testing.T) {
 	node := createTestNode(t, 8260)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9260", TEST_AUTH_TOKEN, logger)
@@ -279,7 +279,7 @@ func TestGRPCClient_MultipleConnections(t *testing.T) {
 	node2 := createTestNode(t, 8271)
 	defer node2.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server1, err := NewGRPCServer(node1, "127.0.0.1:9270", TEST_AUTH_TOKEN, logger)
@@ -321,7 +321,7 @@ func TestGRPCClient_Close(t *testing.T) {
 	node2 := createTestNode(t, 8281)
 	defer node2.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server1, err := NewGRPCServer(node1, "127.0.0.1:9280", TEST_AUTH_TOKEN, logger)
@@ -363,7 +363,7 @@ func TestGRPCClient_Close(t *testing.T) {
 }
 
 func TestGRPCClient_Timeout(t *testing.T) {
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	// Create client with very short timeout
@@ -383,7 +383,7 @@ func TestGRPCClient_ConcurrentCalls(t *testing.T) {
 	node := createTestNode(t, 8290)
 	defer node.Shutdown()
 
-	logger, err := pkg.New(pkg.DefaultConfig())
+	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
 	server, err := NewGRPCServer(node, "127.0.0.1:9290", TEST_AUTH_TOKEN, logger)

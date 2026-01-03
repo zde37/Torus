@@ -34,12 +34,8 @@ type GRPCClient struct {
 
 // NewGRPCClient creates a new gRPC client.
 func NewGRPCClient(logger *pkg.Logger, authToken string, timeout time.Duration) *GRPCClient {
-	if logger == nil {
-		logger, _ = pkg.New(pkg.DefaultConfig())
-	}
-
 	return &GRPCClient{
-		logger:      logger.WithFields(pkg.Fields{"component": "grpc_client"}),
+		logger:      logger,
 		authToken:   authToken,
 		connections: make(map[string]*grpc.ClientConn),
 		timeout:     timeout,
@@ -88,7 +84,9 @@ func (c *GRPCClient) getConnection(address string) (*grpc.ClientConn, error) {
 	}
 
 	c.connections[address] = newConn
-	c.logger.Debug().Str("address", address).Msg("Created new gRPC connection")
+	c.logger.Debug("created new gRPC connection", pkg.Fields{
+		"address": address,
+	})
 
 	return newConn, nil
 }
@@ -443,10 +441,10 @@ func (c *GRPCClient) TransferKeys(ctx context.Context, address string, startID, 
 		keys[kv.Key] = kv.Value
 	}
 
-	c.logger.Debug().
-		Int("key_count", len(keys)).
-		Str("address", address).
-		Msg("Received keys from remote node")
+	c.logger.Debug("received keys from remote node", pkg.Fields{
+		"key_count": len(keys),
+		"address":   address,
+	})
 
 	return keys, nil
 }
@@ -484,10 +482,10 @@ func (c *GRPCClient) DeleteTransferredKeys(ctx context.Context, address string, 
 		return fmt.Errorf("remote node failed to delete transferred keys")
 	}
 
-	c.logger.Debug().
-		Int("key_count", int(resp.Count)).
-		Str("address", address).
-		Msg("Deleted transferred keys on remote node")
+	c.logger.Debug("deleted transferred keys on remote node", pkg.Fields{
+		"key_count": int(resp.Count),
+		"address":   address,
+	})
 
 	return nil
 }
@@ -596,16 +594,16 @@ func (c *GRPCClient) Close() error {
 	c.connMu.Lock()
 	defer c.connMu.Unlock()
 
-	c.logger.Info().
-		Int("connections", len(c.connections)).
-		Msg("Closing all gRPC connections")
+	c.logger.Info("closing all gRPC connections", pkg.Fields{
+		"connections": len(c.connections),
+	})
 
 	for address, conn := range c.connections {
 		if err := conn.Close(); err != nil {
-			c.logger.Error().
-				Err(err).
-				Str("address", address).
-				Msg("Failed to close connection")
+			c.logger.Error("failed to close connection", pkg.Fields{
+				"error":   err.Error(),
+				"address": address,
+			})
 		}
 	}
 
@@ -648,10 +646,10 @@ func (c *GRPCClient) BulkStore(ctx context.Context, address string, items map[st
 		return fmt.Errorf("bulk store failed on remote node")
 	}
 
-	c.logger.Debug().
-		Int32("count", resp.Count).
-		Str("address", address).
-		Msg("Bulk stored items on remote node")
+	c.logger.Debug("bulk stored items on remote node", pkg.Fields{
+		"count":   resp.Count,
+		"address": address,
+	})
 
 	return nil
 }
@@ -699,10 +697,10 @@ func (c *GRPCClient) NotifyPredecessorLeaving(ctx context.Context, address strin
 		return fmt.Errorf("predecessor failed to process leaving notification")
 	}
 
-	c.logger.Debug().
-		Str("address", address).
-		Str("new_successor", newSuccessor.Address()).
-		Msg("Notified predecessor about leaving")
+	c.logger.Debug("notified predecessor about leaving", pkg.Fields{
+		"address":       address,
+		"new_successor": newSuccessor.Address(),
+	})
 
 	return nil
 }
@@ -744,10 +742,10 @@ func (c *GRPCClient) NotifySuccessorLeaving(ctx context.Context, address string,
 		return fmt.Errorf("successor failed to process leaving notification")
 	}
 
-	c.logger.Debug().
-		Str("address", address).
-		Str("new_predecessor", newPredecessor.Address()).
-		Msg("Notified successor about leaving")
+	c.logger.Debug("notified successor about leaving", pkg.Fields{
+		"address":         address,
+		"new_predecessor": newPredecessor.Address(),
+	})
 
 	return nil
 }
@@ -789,10 +787,10 @@ func (c *GRPCClient) NotifyNodeLeaving(ctx context.Context, address string, leav
 		return fmt.Errorf("node failed to process leaving notification")
 	}
 
-	c.logger.Debug().
-		Str("address", address).
-		Str("leaving_node", leavingNode.Address()).
-		Msg("Notified node about departure")
+	c.logger.Debug("notified node about departure", pkg.Fields{
+		"address":      address,
+		"leaving_node": leavingNode.Address(),
+	})
 
 	return nil
 }
