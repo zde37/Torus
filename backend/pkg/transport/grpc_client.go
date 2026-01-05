@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/zde37/torus/internal/chord"
 	"github.com/zde37/torus/pkg"
+	"github.com/zde37/torus/pkg/chord"
 	pb "github.com/zde37/torus/protobuf/protogen"
 )
 

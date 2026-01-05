@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zde37/torus/internal/config"
-	"github.com/zde37/torus/internal/hash"
 	"github.com/zde37/torus/pkg"
+	"github.com/zde37/torus/pkg/config"
+	"github.com/zde37/torus/pkg/hash"
 )
 
 func createTestNode(t *testing.T, host string, port int) *ChordNode {
@@ -737,7 +737,7 @@ func TestChordNode_UpdateSuccessorList(t *testing.T) {
 		successors := make([]*NodeAddress, 12)
 		for i := 0; i < 12; i++ {
 			successors[i] = NewNodeAddress(
-				big.NewInt(int64(100 + i*10)),
+				big.NewInt(int64(100+i*10)),
 				"127.0.0.1",
 				8081+i,
 				8081+i,

@@ -8,11 +8,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/zde37/torus/internal/api"
-	"github.com/zde37/torus/internal/chord"
-	"github.com/zde37/torus/internal/config"
-	"github.com/zde37/torus/internal/transport"
 	"github.com/zde37/torus/pkg"
+	"github.com/zde37/torus/pkg/api"
+	"github.com/zde37/torus/pkg/chord"
+	"github.com/zde37/torus/pkg/config"
+	"github.com/zde37/torus/pkg/transport"
 )
 
 func main() {

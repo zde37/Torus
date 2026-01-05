@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zde37/torus/internal/chord"
-	"github.com/zde37/torus/internal/config"
 	"github.com/zde37/torus/pkg"
+	"github.com/zde37/torus/pkg/chord"
+	"github.com/zde37/torus/pkg/config"
 	pb "github.com/zde37/torus/protobuf/protogen"
 )
 
@@ -130,7 +130,7 @@ func TestGRPCServer_FindSuccessor(t *testing.T) {
 	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9020",TEST_AUTH_TOKEN, logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9020", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -422,7 +422,7 @@ func TestGRPCServer_Set(t *testing.T) {
 	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9100",TEST_AUTH_TOKEN, logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9100", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	// For MVP, Set returns success
@@ -444,7 +444,7 @@ func TestGRPCServer_Delete(t *testing.T) {
 	logger, err := pkg.NewLogger(nil)
 	require.NoError(t, err)
 
-	server, err := NewGRPCServer(node, "127.0.0.1:9110",TEST_AUTH_TOKEN, logger)
+	server, err := NewGRPCServer(node, "127.0.0.1:9110", TEST_AUTH_TOKEN, logger)
 	require.NoError(t, err)
 
 	// For MVP, Delete returns success
@@ -466,9 +466,9 @@ func TestNodeAddressToProto(t *testing.T) {
 			name: "valid address",
 			addr: chord.NewNodeAddress(big.NewInt(42), "192.168.1.1", 8000, 8080),
 			expected: &pb.Node{
-				Id:   big.NewInt(42).Bytes(),
-				Host: "192.168.1.1",
-				Port: 8000,
+				Id:       big.NewInt(42).Bytes(),
+				Host:     "192.168.1.1",
+				Port:     8000,
 				HttpPort: 8080,
 			},
 		},
@@ -504,9 +504,9 @@ func TestProtoToNodeAddress(t *testing.T) {
 		{
 			name: "valid node",
 			node: &pb.Node{
-				Id:   big.NewInt(42).Bytes(),
-				Host: "192.168.1.1",
-				Port: 8000,
+				Id:       big.NewInt(42).Bytes(),
+				Host:     "192.168.1.1",
+				Port:     8000,
 				HttpPort: 8080,
 			},
 			expected: chord.NewNodeAddress(big.NewInt(42), "192.168.1.1", 8000, 8080),

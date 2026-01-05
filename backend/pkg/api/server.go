@@ -12,8 +12,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/zde37/torus/internal/transport"
 	"github.com/zde37/torus/pkg"
+	"github.com/zde37/torus/pkg/transport"
 	pb "github.com/zde37/torus/protobuf/protogen"
 )
 

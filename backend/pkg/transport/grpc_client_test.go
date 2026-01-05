@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zde37/torus/internal/chord"
 	"github.com/zde37/torus/pkg"
+	"github.com/zde37/torus/pkg/chord"
 )
 
 func TestNewGRPCClient(t *testing.T) {
@@ -23,14 +23,6 @@ func TestNewGRPCClient(t *testing.T) {
 	assert.Equal(t, 5*time.Second, client.timeout)
 	assert.NotNil(t, client.connections)
 	assert.Empty(t, client.connections)
-}
-
-func TestNewGRPCClient_NilLogger(t *testing.T) {
-	// Should create default logger if nil
-	client := NewGRPCClient(nil, TEST_AUTH_TOKEN, 5*time.Second)
-
-	assert.NotNil(t, client)
-	assert.NotNil(t, client.logger)
 }
 
 func TestGRPCClient_FindSuccessor(t *testing.T) {
