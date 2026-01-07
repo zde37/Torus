@@ -1,4 +1,4 @@
-module github.com/zde37/torus
+module github.com/zde37/torus/backend
 
 go 1.24.1
 
