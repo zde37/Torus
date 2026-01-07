@@ -287,7 +287,7 @@ func TestGetResponse_MarshalUnmarshal(t *testing.T) {
 
 			assert.Equal(t, original.Found, decoded.Found)
 			// Protobuf treats empty byte slices and nil the same way
-			if tt.value == nil || len(tt.value) == 0 {
+			if len(tt.value) == 0 {
 				assert.Empty(t, decoded.Value)
 			} else {
 				assert.Equal(t, original.Value, decoded.Value)

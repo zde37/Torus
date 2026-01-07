@@ -7,9 +7,9 @@ all: proto test
 proto:
 	@echo "Generating protobuf code..."
 	protoc -I protobuf/proto \
-		--go_out=. --go_opt=module=github.com/zde37/torus \
-		--go-grpc_out=. --go-grpc_opt=module=github.com/zde37/torus \
-		--grpc-gateway_out=. --grpc-gateway_opt=module=github.com/zde37/torus \
+		--go_out=. --go_opt=module=github.com/zde37/torus/backend \
+		--go-grpc_out=. --go-grpc_opt=module=github.com/zde37/torus/backend \
+		--grpc-gateway_out=. --grpc-gateway_opt=module=github.com/zde37/torus/backend \
 		--grpc-gateway_opt=logtostderr=true \
 		protobuf/proto/chord.proto
 	@echo "Protobuf code generated successfully!"

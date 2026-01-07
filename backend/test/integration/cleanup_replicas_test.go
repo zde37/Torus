@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/zde37/torus/pkg"
-	"github.com/zde37/torus/pkg/chord"
-	"github.com/zde37/torus/pkg/config"
-	"github.com/zde37/torus/pkg/transport"
+	"github.com/zde37/torus/backend/pkg"
+	"github.com/zde37/torus/backend/pkg/chord"
+	"github.com/zde37/torus/backend/pkg/config"
+	"github.com/zde37/torus/backend/pkg/transport"
 )
 
 func TestCleanupStaleReplicas(t *testing.T) {

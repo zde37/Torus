@@ -7,8 +7,8 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/zde37/torus/pkg"
-	"github.com/zde37/torus/pkg/hash"
+	"github.com/zde37/torus/backend/pkg"
+	"github.com/zde37/torus/backend/pkg/hash"
 )
 
 const (

@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/zde37/torus/pkg"
-	"github.com/zde37/torus/pkg/config"
-	"github.com/zde37/torus/pkg/hash"
+	"github.com/zde37/torus/backend/pkg"
+	"github.com/zde37/torus/backend/pkg/config"
+	"github.com/zde37/torus/backend/pkg/hash"
 )
 
 func createTestNode(t *testing.T, host string, port int) *ChordNode {

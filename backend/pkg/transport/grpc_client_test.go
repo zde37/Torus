@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zde37/torus/pkg"
-	"github.com/zde37/torus/pkg/chord"
+	"github.com/zde37/torus/backend/pkg"
+	"github.com/zde37/torus/backend/pkg/chord"
 )
 
 func TestNewGRPCClient(t *testing.T) {

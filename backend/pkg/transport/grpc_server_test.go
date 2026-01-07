@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zde37/torus/pkg"
-	"github.com/zde37/torus/pkg/chord"
-	"github.com/zde37/torus/pkg/config"
-	pb "github.com/zde37/torus/protobuf/protogen"
+	"github.com/zde37/torus/backend/pkg"
+	"github.com/zde37/torus/backend/pkg/chord"
+	"github.com/zde37/torus/backend/pkg/config"
+	pb "github.com/zde37/torus/backend/protobuf/protogen"
 )
 
 var (

@@ -9,9 +9,9 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/zde37/torus/pkg"
-	"github.com/zde37/torus/pkg/chord"
-	pb "github.com/zde37/torus/protobuf/protogen"
+	"github.com/zde37/torus/backend/pkg"
+	"github.com/zde37/torus/backend/pkg/chord"
+	pb "github.com/zde37/torus/backend/protobuf/protogen"
 	"google.golang.org/grpc/reflection"
 )
 

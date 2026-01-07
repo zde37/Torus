@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/zde37/torus/pkg"
+	"github.com/zde37/torus/backend/pkg"
 )
 
 const (

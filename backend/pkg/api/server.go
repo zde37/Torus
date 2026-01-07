@@ -12,9 +12,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/zde37/torus/pkg"
-	"github.com/zde37/torus/pkg/transport"
-	pb "github.com/zde37/torus/protobuf/protogen"
+	"github.com/zde37/torus/backend/pkg"
+	"github.com/zde37/torus/backend/pkg/transport"
+	pb "github.com/zde37/torus/backend/protobuf/protogen"
 )
 
 // Server represents the HTTP API gateway server.

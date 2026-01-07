@@ -2549,7 +2549,7 @@ const file_chord_proto_rawDesc = "" +
 	"\tBulkStore\x12\x1a.protogen.BulkStoreRequest\x1a\x1b.protogen.BulkStoreResponse\x12q\n" +
 	"\x18NotifyPredecessorLeaving\x12).protogen.NotifyPredecessorLeavingRequest\x1a*.protogen.NotifyPredecessorLeavingResponse\x12k\n" +
 	"\x16NotifySuccessorLeaving\x12'.protogen.NotifySuccessorLeavingRequest\x1a(.protogen.NotifySuccessorLeavingResponse\x12\\\n" +
-	"\x11NotifyNodeLeaving\x12\".protogen.NotifyNodeLeavingRequest\x1a#.protogen.NotifyNodeLeavingResponseB*Z(github.com/zde37/torus/protobuf/protogenb\x06proto3"
+	"\x11NotifyNodeLeaving\x12\".protogen.NotifyNodeLeavingRequest\x1a#.protogen.NotifyNodeLeavingResponseB2Z0github.com/zde37/torus/backend/protobuf/protogenb\x06proto3"
 
 var (
 	file_chord_proto_rawDescOnce sync.Once

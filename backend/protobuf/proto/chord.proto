@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package protogen;
 
-option go_package = "github.com/zde37/torus/protobuf/protogen";
+option go_package = "github.com/zde37/torus/backend/protobuf/protogen";
 
 import "google/api/annotations.proto";
 

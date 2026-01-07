@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/zde37/torus/pkg"
-	"github.com/zde37/torus/pkg/chord"
-	pb "github.com/zde37/torus/protobuf/protogen"
+	"github.com/zde37/torus/backend/pkg"
+	"github.com/zde37/torus/backend/pkg/chord"
+	pb "github.com/zde37/torus/backend/protobuf/protogen"
 )
 
 // Compile-time check to ensure GRPCClient implements chord.RemoteClient
